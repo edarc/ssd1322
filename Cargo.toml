@@ -1,0 +1,7 @@
+[package]
+name = "ssd1622"
+version = "0.1.0"
+authors = ["Kyle Schaffrick <kyle@raidi.us>"]
+
+[dependencies]
+embedded-hal = "0.2"
