@@ -167,3 +167,173 @@ pub enum Command<'buf> {
     /// commands except `SetCommandLock`.
     SetCommandLock(bool),
 }
+
+impl<'buf> Command<'buf> {
+    pub fn send<DI>(self, iface: &mut DI) -> Result<(), ()>
+    where
+        DI: DisplayInterface,
+    {
+        macro_rules! replace_expr {
+            ($_t:expr, $sub:expr) => {
+                $sub
+            };
+        }
+        macro_rules! ok_command {
+                    ($buf:ident, $cmd:expr, [$($els:expr),*]) => {{
+                        const _LEN: usize = 0usize $(+ replace_expr!($els, 1usize))*;
+                        $buf[.._LEN].copy_from_slice(&[$($els,)*]);
+                        Ok(($cmd, &$buf[.._LEN]))
+                    }};
+                    ($buf:ident, $cmd:expr, $src:expr) => {{
+                        $buf[..].copy_from_slice($src);
+                        Ok(($cmd, &$buf[..]))
+                    }};
+                }
+        let mut arg_buf = [0u8; 15];
+        let (cmd, data) = match self {
+            Command::EnableGrayScaleTable => ok_command!(arg_buf, 0x00, []),
+            Command::SetColumnAddress(start, end) => match (start, end) {
+                (0...119, 0...119) => ok_command!(arg_buf, 0x15, [start, end]),
+                _ => Err(()),
+            },
+            Command::SetRowAddress(start, end) => match (start, end) {
+                (0...127, 0...127) => ok_command!(arg_buf, 0x75, [start, end]),
+                _ => Err(()),
+            },
+            Command::SetRemapping(
+                increment_axis,
+                column_remap,
+                nibble_remap,
+                com_scan_direction,
+                com_layout,
+            ) => {
+                let ia = match increment_axis {
+                    IncrementAxis::Horizontal => 0x00,
+                    IncrementAxis::Vertical => 0x01,
+                };
+                let cr = match column_remap {
+                    ColumnRemap::Forward => 0x00,
+                    ColumnRemap::Reverse => 0x02,
+                };
+                let nr = match nibble_remap {
+                    NibbleRemap::Reverse => 0x00,
+                    NibbleRemap::Forward => 0x04,
+                };
+                let csd = match com_scan_direction {
+                    ComScanDirection::RowZeroFirst => 0x00,
+                    ComScanDirection::RowZeroLast => 0x10,
+                };
+                let (interlace, dual_com) = match com_layout {
+                    ComLayout::Progressive => (0x00, 0x01),
+                    ComLayout::Interlaced => (0x20, 0x01),
+                    ComLayout::DualProgressive => (0x00, 0x11),
+                };
+                ok_command!(arg_buf, 0xA0, [ia | cr | nr | csd | interlace, dual_com])
+            }
+            Command::WriteImageData(buf) => Ok((0x5C, buf)),
+            Command::SetStartLine(line) => match line {
+                0...127 => ok_command!(arg_buf, 0xA1, [line]),
+                _ => Err(()),
+            },
+            Command::SetDisplayOffset(line) => match line {
+                0...127 => ok_command!(arg_buf, 0xA2, [line]),
+                _ => Err(()),
+            },
+            Command::SetDisplayMode(mode) => ok_command!(
+                arg_buf,
+                match mode {
+                    DisplayMode::BlankDark => 0xA4,
+                    DisplayMode::BlankBright => 0xA5,
+                    DisplayMode::Normal => 0xA6,
+                    DisplayMode::Inverse => 0xA7,
+                },
+                []
+            ),
+            Command::EnablePartialDisplay(start, end) => match (start, end) {
+                (0...127, 0...127) if start <= end => ok_command!(arg_buf, 0xA8, [start, end]),
+                _ => Err(()),
+            },
+            Command::DisablePartialDisplay => ok_command!(arg_buf, 0xA9, []),
+            Command::SetSleepMode(ena) => ok_command!(
+                arg_buf,
+                match ena {
+                    true => 0xAE,
+                    false => 0xAF,
+                },
+                []
+            ),
+            Command::SetPhaseLengths(phase_1, phase_2) => match (phase_1, phase_2) {
+                (5...31, 3...15) => {
+                    let p1 = (phase_1 - 4) >> 1;
+                    ok_command!(arg_buf, 0xB1, [p1, phase_2])
+                }
+                _ => Err(()),
+            },
+            Command::SetClockFoscDivset(fosc, divset) => match (fosc, divset) {
+                (0...15, 0...10) => ok_command!(arg_buf, 0xB3, [fosc << 4 | divset]),
+                _ => Err(()),
+            },
+            Command::SetDisplayEnhancements(ena_external_vsl, ena_enahnced_low_gs_quality) => {
+                let vsl = match ena_external_vsl {
+                    true => 0xA2,
+                    false => 0xA0,
+                };
+                let gs = match ena_enahnced_low_gs_quality {
+                    true => 0xFD,
+                    false => 0xB5,
+                };
+                ok_command!(arg_buf, 0xB4, [vsl, gs])
+            }
+            Command::SetSecondPrechargePeriod(period) => match period {
+                0...15 => ok_command!(arg_buf, 0xB6, [period]),
+                _ => Err(()),
+            },
+            Command::SetGrayScaleTable(table) => {
+                // Each element must be greater than the previous one, and all must be
+                // between 0 and 180.
+                let ok = table
+                    .iter()
+                    .fold((true, 0), |(ok_so_far, prev), cur| {
+                        (ok_so_far && prev < *cur && *cur <= 180, *cur)
+                    })
+                    .0;
+                if ok {
+                    ok_command!(arg_buf, 0xB8, &table)
+                } else {
+                    Err(())
+                }
+            }
+            Command::SetDefaultGrayScaleTable => ok_command!(arg_buf, 0xB9, []),
+            Command::SetPreChargeVoltage(voltage) => match voltage {
+                0...31 => ok_command!(arg_buf, 0xBB, [voltage]),
+                _ => Err(()),
+            },
+            Command::SetComDeselectVoltage(voltage) => match voltage {
+                0...7 => ok_command!(arg_buf, 0xBE, [voltage]),
+                _ => Err(()),
+            },
+            Command::SetContrastCurrent(current) => ok_command!(arg_buf, 0xC1, [current]),
+            Command::SetMasterContrast(contrast) => match contrast {
+                0...15 => ok_command!(arg_buf, 0xC7, [contrast]),
+                _ => Err(()),
+            },
+            Command::SetMuxRatio(ratio) => match ratio {
+                16...128 => ok_command!(arg_buf, 0xCA, [ratio - 1]),
+                _ => Err(()),
+            },
+            Command::SetCommandLock(ena) => {
+                let e = match ena {
+                    true => 0x16,
+                    false => 0x12,
+                };
+                ok_command!(arg_buf, 0xFD, [e])
+            }
+        }?;
+        iface.send_command(cmd)?;
+        if data.len() == 0 {
+            Ok(())
+        } else {
+            iface.send_data(data)
+        }
+    }
+}
