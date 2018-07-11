@@ -5,3 +5,7 @@ authors = ["Kyle Schaffrick <kyle@raidi.us>"]
 
 [dependencies]
 embedded-hal = "0.2"
+
+[features]
+default = ["std"]
+std = []

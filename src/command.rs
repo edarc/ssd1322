@@ -264,8 +264,8 @@ impl<'buf> Command<'buf> {
             ),
             Command::SetPhaseLengths(phase_1, phase_2) => match (phase_1, phase_2) {
                 (5...31, 3...15) => {
-                    let p1 = (phase_1 - 4) >> 1;
-                    ok_command!(arg_buf, 0xB1, [p1, phase_2])
+                    let p1 = 0xF0 & ((phase_1 - 1) << 3);
+                    ok_command!(arg_buf, 0xB1, [p1 | phase_2])
                 }
                 _ => Err(()),
             },
@@ -275,8 +275,8 @@ impl<'buf> Command<'buf> {
             },
             Command::SetDisplayEnhancements(ena_external_vsl, ena_enahnced_low_gs_quality) => {
                 let vsl = match ena_external_vsl {
-                    true => 0xA2,
-                    false => 0xA0,
+                    true => 0xA0,
+                    false => 0xA2,
                 };
                 let gs = match ena_enahnced_low_gs_quality {
                     true => 0xFD,
@@ -291,12 +291,12 @@ impl<'buf> Command<'buf> {
             Command::SetGrayScaleTable(table) => {
                 // Each element must be greater than the previous one, and all must be
                 // between 0 and 180.
-                let ok = table
+                let ok = table[1..]
                     .iter()
                     .fold((true, 0), |(ok_so_far, prev), cur| {
                         (ok_so_far && prev < *cur && *cur <= 180, *cur)
                     })
-                    .0;
+                    .0 && table[0] <= table[1];
                 if ok {
                     ok_command!(arg_buf, 0xB8, &table)
                 } else {
@@ -335,5 +335,310 @@ impl<'buf> Command<'buf> {
         } else {
             iface.send_data(data)
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use interface::DisplayInterface;
+    use std::vec::Vec;
+
+    struct DummyDI {
+        cmd: Option<u8>,
+        data: Vec<u8>,
+    }
+
+    impl DummyDI {
+        fn new() -> Self {
+            DummyDI {
+                cmd: None,
+                data: Vec::new(),
+            }
+        }
+        fn check(&self, cmd: u8, data: &[u8]) {
+            assert_eq!(self.cmd, Some(cmd));
+            assert_eq!(self.data, data);
+        }
+        fn clear(&mut self) {
+            self.data.clear()
+        }
+    }
+
+    impl DisplayInterface for DummyDI {
+        fn send_command(&mut self, cmd: u8) -> Result<(), ()> {
+            self.cmd = Some(cmd);
+            Ok(())
+        }
+        fn send_data(&mut self, data: &[u8]) -> Result<(), ()> {
+            self.data.extend(data.iter().cloned());
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn set_column_address() {
+        let mut di = DummyDI::new();
+        Command::SetColumnAddress(23, 42).send(&mut di).unwrap();
+        di.check(0x15, &[23, 42]);
+        assert_eq!(Command::SetColumnAddress(120, 42).send(&mut di), Err(()));
+        assert_eq!(Command::SetColumnAddress(23, 255).send(&mut di), Err(()));
+    }
+
+    #[test]
+    fn set_row_address() {
+        let mut di = DummyDI::new();
+        Command::SetRowAddress(23, 42).send(&mut di).unwrap();
+        di.check(0x75, &[23, 42]);
+        assert_eq!(Command::SetRowAddress(128, 42).send(&mut di), Err(()));
+        assert_eq!(Command::SetRowAddress(23, 255).send(&mut di), Err(()));
+    }
+
+    #[test]
+    fn set_remapping() {
+        let mut di = DummyDI::new();
+        Command::SetRemapping(
+            IncrementAxis::Horizontal,
+            ColumnRemap::Forward,
+            NibbleRemap::Reverse,
+            ComScanDirection::RowZeroFirst,
+            ComLayout::Progressive,
+        ).send(&mut di)
+            .unwrap();
+        di.check(0xA0, &[0x00, 0x01]);
+
+        di.clear();
+        Command::SetRemapping(
+            IncrementAxis::Vertical,
+            ColumnRemap::Reverse,
+            NibbleRemap::Forward,
+            ComScanDirection::RowZeroLast,
+            ComLayout::Interlaced,
+        ).send(&mut di)
+            .unwrap();
+        di.check(0xA0, &[0x37, 0x01]);
+
+        di.clear();
+        Command::SetRemapping(
+            IncrementAxis::Horizontal,
+            ColumnRemap::Forward,
+            NibbleRemap::Forward,
+            ComScanDirection::RowZeroLast,
+            ComLayout::DualProgressive,
+        ).send(&mut di)
+            .unwrap();
+        di.check(0xA0, &[0x14, 0x11]);
+    }
+
+    #[test]
+    fn write_image_data() {
+        let mut di = DummyDI::new();
+        let image_buf = (0..24).collect::<Vec<u8>>();
+        Command::WriteImageData(&image_buf[..])
+            .send(&mut di)
+            .unwrap();
+        di.check(0x5C, &(0..24u8).collect::<Vec<_>>()[..]);
+    }
+
+    #[test]
+    fn set_start_line() {
+        let mut di = DummyDI::new();
+        Command::SetStartLine(23).send(&mut di).unwrap();
+        di.check(0xA1, &[23]);
+        assert_eq!(Command::SetStartLine(128).send(&mut di), Err(()));
+    }
+
+    #[test]
+    fn set_display_offset() {
+        let mut di = DummyDI::new();
+        Command::SetDisplayOffset(23).send(&mut di).unwrap();
+        di.check(0xA2, &[23]);
+        assert_eq!(Command::SetDisplayOffset(128).send(&mut di), Err(()));
+    }
+
+    #[test]
+    fn set_display_mode() {
+        let mut di = DummyDI::new();
+        Command::SetDisplayMode(DisplayMode::BlankDark)
+            .send(&mut di)
+            .unwrap();
+        di.check(0xA4, &[]);
+        Command::SetDisplayMode(DisplayMode::BlankBright)
+            .send(&mut di)
+            .unwrap();
+        di.check(0xA5, &[]);
+        Command::SetDisplayMode(DisplayMode::Normal)
+            .send(&mut di)
+            .unwrap();
+        di.check(0xA6, &[]);
+        Command::SetDisplayMode(DisplayMode::Inverse)
+            .send(&mut di)
+            .unwrap();
+        di.check(0xA7, &[]);
+    }
+
+    #[test]
+    fn enable_partial_display() {
+        let mut di = DummyDI::new();
+        Command::EnablePartialDisplay(23, 42).send(&mut di).unwrap();
+        di.check(0xA8, &[23, 42]);
+        assert_eq!(
+            Command::EnablePartialDisplay(23, 128).send(&mut di),
+            Err(())
+        );
+        assert_eq!(
+            Command::EnablePartialDisplay(128, 129).send(&mut di),
+            Err(())
+        );
+        assert_eq!(Command::EnablePartialDisplay(42, 23).send(&mut di), Err(()));
+    }
+
+    #[test]
+    fn sleep_mode() {
+        let mut di = DummyDI::new();
+        Command::SetSleepMode(true).send(&mut di).unwrap();
+        di.check(0xAE, &[]);
+        Command::SetSleepMode(false).send(&mut di).unwrap();
+        di.check(0xAF, &[]);
+    }
+
+    #[test]
+    fn set_phase_lengths() {
+        let mut di = DummyDI::new();
+        Command::SetPhaseLengths(5, 3).send(&mut di).unwrap();
+        di.check(0xB1, &[0x23]);
+        di.clear();
+        Command::SetPhaseLengths(7, 3).send(&mut di).unwrap();
+        di.check(0xB1, &[0x33]);
+        di.clear();
+        Command::SetPhaseLengths(31, 15).send(&mut di).unwrap();
+        di.check(0xB1, &[0xFF]);
+        assert_eq!(Command::SetPhaseLengths(4, 3).send(&mut di), Err(()));
+        assert_eq!(Command::SetPhaseLengths(32, 3).send(&mut di), Err(()));
+        assert_eq!(Command::SetPhaseLengths(5, 2).send(&mut di), Err(()));
+        assert_eq!(Command::SetPhaseLengths(5, 16).send(&mut di), Err(()));
+    }
+
+    #[test]
+    fn set_clock_fosc_divset() {
+        let mut di = DummyDI::new();
+        Command::SetClockFoscDivset(0, 0).send(&mut di).unwrap();
+        di.check(0xB3, &[0x00]);
+        di.clear();
+        Command::SetClockFoscDivset(15, 10).send(&mut di).unwrap();
+        di.check(0xB3, &[0xFA]);
+        assert_eq!(Command::SetClockFoscDivset(0, 11).send(&mut di), Err(()));
+        assert_eq!(Command::SetClockFoscDivset(16, 0).send(&mut di), Err(()));
+    }
+
+    #[test]
+    fn set_display_enhancements() {
+        let mut di = DummyDI::new();
+        Command::SetDisplayEnhancements(false, false)
+            .send(&mut di)
+            .unwrap();
+        di.check(0xB4, &[0b10100010, 0b10110101]);
+        di.clear();
+        Command::SetDisplayEnhancements(true, false)
+            .send(&mut di)
+            .unwrap();
+        di.check(0xB4, &[0b10100000, 0b10110101]);
+        di.clear();
+        Command::SetDisplayEnhancements(true, true)
+            .send(&mut di)
+            .unwrap();
+        di.check(0xB4, &[0b10100000, 0b11111101]);
+    }
+
+    #[test]
+    fn set_second_precharge_period() {
+        let mut di = DummyDI::new();
+        Command::SetSecondPrechargePeriod(0).send(&mut di).unwrap();
+        di.check(0xB6, &[0]);
+        di.clear();
+        Command::SetSecondPrechargePeriod(15).send(&mut di).unwrap();
+        di.check(0xB6, &[15]);
+        di.clear();
+        assert_eq!(Command::SetSecondPrechargePeriod(16).send(&mut di), Err(()));
+    }
+
+    #[test]
+    fn set_gray_scale_table() {
+        let mut di = DummyDI::new();
+        Command::SetGrayScaleTable([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14])
+            .send(&mut di)
+            .unwrap();
+        di.check(0xB8, &[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]);
+        di.clear();
+        Command::SetGrayScaleTable([
+            166, 167, 168, 169, 170, 171, 172, 173, 174, 175, 176, 177, 178, 179, 180,
+        ]).send(&mut di)
+            .unwrap();
+        di.check(
+            0xB8,
+            &[
+                166, 167, 168, 169, 170, 171, 172, 173, 174, 175, 176, 177, 178, 179, 180,
+            ],
+        );
+        di.clear();
+        // Out of range
+        assert_eq!(
+            Command::SetGrayScaleTable([
+                166, 167, 168, 169, 170, 171, 172, 173, 174, 175, 176, 177, 178, 179, 181,
+            ]).send(&mut di),
+            Err(())
+        );
+        // Non-increasing
+        assert_eq!(
+            Command::SetGrayScaleTable([0, 1, 2, 2, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14])
+                .send(&mut di),
+            Err(())
+        );
+    }
+
+    #[test]
+    fn set_pre_charge_voltage() {
+        let mut di = DummyDI::new();
+        Command::SetPreChargeVoltage(17).send(&mut di).unwrap();
+        di.check(0xBB, &[17]);
+        assert_eq!(Command::SetPreChargeVoltage(32).send(&mut di), Err(()));
+    }
+
+    #[test]
+    fn set_com_deselect_voltage() {
+        let mut di = DummyDI::new();
+        Command::SetComDeselectVoltage(3).send(&mut di).unwrap();
+        di.check(0xBE, &[3]);
+        assert_eq!(Command::SetComDeselectVoltage(8).send(&mut di), Err(()));
+    }
+
+    #[test]
+    fn set_master_contrasat() {
+        let mut di = DummyDI::new();
+        Command::SetMasterContrast(3).send(&mut di).unwrap();
+        di.check(0xC7, &[3]);
+        assert_eq!(Command::SetMasterContrast(16).send(&mut di), Err(()));
+    }
+
+    #[test]
+    fn set_mux_ratio() {
+        let mut di = DummyDI::new();
+        Command::SetMuxRatio(128).send(&mut di).unwrap();
+        di.check(0xCA, &[127]);
+        di.clear();
+        Command::SetMuxRatio(16).send(&mut di).unwrap();
+        di.check(0xCA, &[15]);
+        assert_eq!(Command::SetMuxRatio(15).send(&mut di), Err(()));
+        assert_eq!(Command::SetMuxRatio(129).send(&mut di), Err(()));
+    }
+
+    #[test]
+    fn set_command_lock() {
+        let mut di = DummyDI::new();
+        Command::SetCommandLock(true).send(&mut di).unwrap();
+        di.check(0xFD, &[0b00010110]);
+        di.clear();
+        Command::SetCommandLock(false).send(&mut di).unwrap();
+        di.check(0xFD, &[0b00010010]);
     }
 }
