@@ -448,14 +448,17 @@ mod tests {
             .send(&mut di)
             .unwrap();
         di.check(0xA4, &[]);
+        di.clear();
         Command::SetDisplayMode(DisplayMode::BlankBright)
             .send(&mut di)
             .unwrap();
         di.check(0xA5, &[]);
+        di.clear();
         Command::SetDisplayMode(DisplayMode::Normal)
             .send(&mut di)
             .unwrap();
         di.check(0xA6, &[]);
+        di.clear();
         Command::SetDisplayMode(DisplayMode::Inverse)
             .send(&mut di)
             .unwrap();
@@ -483,6 +486,7 @@ mod tests {
         let mut di = TestSpyInterface::new();
         Command::SetSleepMode(true).send(&mut di).unwrap();
         di.check(0xAE, &[]);
+        di.clear();
         Command::SetSleepMode(false).send(&mut di).unwrap();
         di.check(0xAF, &[]);
     }

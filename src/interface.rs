@@ -57,35 +57,55 @@ pub mod test_spy {
     //! An interface for use in unit tests to spy on whatever was sent to it.
 
     use super::DisplayInterface;
+    use std::cell::RefCell;
+    use std::rc::Rc;
+
+    #[derive(Debug, PartialEq)]
+    pub enum Sent {
+        Cmd(u8),
+        Data(Vec<u8>),
+    }
 
     pub struct TestSpyInterface {
-        cmd: Option<u8>,
-        data: Vec<u8>,
+        sent: Rc<RefCell<Vec<Sent>>>,
     }
 
     impl TestSpyInterface {
         pub fn new() -> Self {
             TestSpyInterface {
-                cmd: None,
-                data: Vec::new(),
+                sent: Rc::new(RefCell::new(Vec::new())),
+            }
+        }
+        pub fn split(&self) -> Self {
+            Self {
+                sent: self.sent.clone(),
             }
         }
         pub fn check(&self, cmd: u8, data: &[u8]) {
-            assert_eq!(self.cmd, Some(cmd));
-            assert_eq!(self.data, data);
+            let sent = self.sent.borrow();
+            if data.len() == 0 {
+                assert_eq!(sent.len(), 1);
+            } else {
+                assert_eq!(sent.len(), 2);
+                assert_eq!(sent[1], Sent::Data(data.to_vec()));
+            }
+            assert_eq!(sent[0], Sent::Cmd(cmd));
+        }
+        pub fn check_multi(&self, expect: &[Sent]) {
+            assert_eq!(*self.sent.borrow(), expect);
         }
         pub fn clear(&mut self) {
-            self.data.clear()
+            self.sent.borrow_mut().clear()
         }
     }
 
     impl DisplayInterface for TestSpyInterface {
         fn send_command(&mut self, cmd: u8) -> Result<(), ()> {
-            self.cmd = Some(cmd);
+            self.sent.borrow_mut().push(Sent::Cmd(cmd));
             Ok(())
         }
         fn send_data(&mut self, data: &[u8]) -> Result<(), ()> {
-            self.data.extend(data.iter().cloned());
+            self.sent.borrow_mut().push(Sent::Data(data.to_vec()));
             Ok(())
         }
     }
