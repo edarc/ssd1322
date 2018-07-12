@@ -8,4 +8,6 @@ extern crate core;
 extern crate embedded_hal as hal;
 
 pub mod command;
+pub mod config;
+pub mod display;
 pub mod interface;

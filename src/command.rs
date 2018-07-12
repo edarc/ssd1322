@@ -9,6 +9,7 @@
 use interface::DisplayInterface;
 
 /// The address increment orientation when writing image data.
+#[derive(Clone, Copy)]
 pub enum IncrementAxis {
     /// The column address will increment as image data is written, writing pairs of bytes
     /// (horizontal groups of 4 pixels) from left to right in the range set by `SetColumnAddress`
@@ -21,6 +22,7 @@ pub enum IncrementAxis {
 }
 
 /// Setting of column address remapping.
+#[derive(Clone, Copy)]
 pub enum ColumnRemap {
     /// Column addresses 0->119 map to segments 0,1,2,3->476,477,478,479.
     Forward,
@@ -31,6 +33,7 @@ pub enum ColumnRemap {
 }
 
 /// Setting of data nibble remapping.
+#[derive(Clone, Copy)]
 pub enum NibbleRemap {
     /// 2-byte sequence 0xABCD maps (in L->R order) to pixels 3,2,1,0.
     Reverse,
@@ -39,6 +42,7 @@ pub enum NibbleRemap {
 }
 
 /// Setting of the COM line scanning of rows. Changing this setting will flip the image vertically.
+#[derive(Clone, Copy)]
 pub enum ComScanDirection {
     /// COM lines scan row addresses top to bottom, so that row address 0 is the first row of the
     /// display.
@@ -52,6 +56,7 @@ pub enum ComScanDirection {
 /// display module itself wires the OLED matrix to the driver chip, and changing it to anything
 /// other than the correct setting for your module will yield a corrupted image. See the display
 /// module datasheet for the correct value to use.
+#[derive(Clone, Copy)]
 pub enum ComLayout {
     /// COM lines are connected to display rows in a progressive arrangement, so that COM lines
     /// 0->127 map to display rows 0->127.
@@ -68,6 +73,7 @@ pub enum ComLayout {
 }
 
 /// Setting of the display mode.
+#[derive(Clone, Copy)]
 pub enum DisplayMode {
     /// The display is blanked with all pixels turned OFF (to grayscale level 0).
     BlankDark,
@@ -80,6 +86,7 @@ pub enum DisplayMode {
     Inverse,
 }
 
+#[derive(Clone, Copy)]
 pub enum Command {
     /// Enable the gray scale gamma table (see `BufCommand::SetGrayScaleTable`).
     EnableGrayScaleTable,
