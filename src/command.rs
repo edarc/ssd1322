@@ -341,44 +341,12 @@ impl<'buf> Command<'buf> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use interface::DisplayInterface;
+    use interface::test_spy::TestSpyInterface;
     use std::vec::Vec;
-
-    struct DummyDI {
-        cmd: Option<u8>,
-        data: Vec<u8>,
-    }
-
-    impl DummyDI {
-        fn new() -> Self {
-            DummyDI {
-                cmd: None,
-                data: Vec::new(),
-            }
-        }
-        fn check(&self, cmd: u8, data: &[u8]) {
-            assert_eq!(self.cmd, Some(cmd));
-            assert_eq!(self.data, data);
-        }
-        fn clear(&mut self) {
-            self.data.clear()
-        }
-    }
-
-    impl DisplayInterface for DummyDI {
-        fn send_command(&mut self, cmd: u8) -> Result<(), ()> {
-            self.cmd = Some(cmd);
-            Ok(())
-        }
-        fn send_data(&mut self, data: &[u8]) -> Result<(), ()> {
-            self.data.extend(data.iter().cloned());
-            Ok(())
-        }
-    }
 
     #[test]
     fn set_column_address() {
-        let mut di = DummyDI::new();
+        let mut di = TestSpyInterface::new();
         Command::SetColumnAddress(23, 42).send(&mut di).unwrap();
         di.check(0x15, &[23, 42]);
         assert_eq!(Command::SetColumnAddress(120, 42).send(&mut di), Err(()));
@@ -387,7 +355,7 @@ mod tests {
 
     #[test]
     fn set_row_address() {
-        let mut di = DummyDI::new();
+        let mut di = TestSpyInterface::new();
         Command::SetRowAddress(23, 42).send(&mut di).unwrap();
         di.check(0x75, &[23, 42]);
         assert_eq!(Command::SetRowAddress(128, 42).send(&mut di), Err(()));
@@ -396,7 +364,7 @@ mod tests {
 
     #[test]
     fn set_remapping() {
-        let mut di = DummyDI::new();
+        let mut di = TestSpyInterface::new();
         Command::SetRemapping(
             IncrementAxis::Horizontal,
             ColumnRemap::Forward,
@@ -432,7 +400,7 @@ mod tests {
 
     #[test]
     fn write_image_data() {
-        let mut di = DummyDI::new();
+        let mut di = TestSpyInterface::new();
         let image_buf = (0..24).collect::<Vec<u8>>();
         Command::WriteImageData(&image_buf[..])
             .send(&mut di)
@@ -442,7 +410,7 @@ mod tests {
 
     #[test]
     fn set_start_line() {
-        let mut di = DummyDI::new();
+        let mut di = TestSpyInterface::new();
         Command::SetStartLine(23).send(&mut di).unwrap();
         di.check(0xA1, &[23]);
         assert_eq!(Command::SetStartLine(128).send(&mut di), Err(()));
@@ -450,7 +418,7 @@ mod tests {
 
     #[test]
     fn set_display_offset() {
-        let mut di = DummyDI::new();
+        let mut di = TestSpyInterface::new();
         Command::SetDisplayOffset(23).send(&mut di).unwrap();
         di.check(0xA2, &[23]);
         assert_eq!(Command::SetDisplayOffset(128).send(&mut di), Err(()));
@@ -458,7 +426,7 @@ mod tests {
 
     #[test]
     fn set_display_mode() {
-        let mut di = DummyDI::new();
+        let mut di = TestSpyInterface::new();
         Command::SetDisplayMode(DisplayMode::BlankDark)
             .send(&mut di)
             .unwrap();
@@ -479,7 +447,7 @@ mod tests {
 
     #[test]
     fn enable_partial_display() {
-        let mut di = DummyDI::new();
+        let mut di = TestSpyInterface::new();
         Command::EnablePartialDisplay(23, 42).send(&mut di).unwrap();
         di.check(0xA8, &[23, 42]);
         assert_eq!(
@@ -495,7 +463,7 @@ mod tests {
 
     #[test]
     fn sleep_mode() {
-        let mut di = DummyDI::new();
+        let mut di = TestSpyInterface::new();
         Command::SetSleepMode(true).send(&mut di).unwrap();
         di.check(0xAE, &[]);
         Command::SetSleepMode(false).send(&mut di).unwrap();
@@ -504,7 +472,7 @@ mod tests {
 
     #[test]
     fn set_phase_lengths() {
-        let mut di = DummyDI::new();
+        let mut di = TestSpyInterface::new();
         Command::SetPhaseLengths(5, 3).send(&mut di).unwrap();
         di.check(0xB1, &[0x23]);
         di.clear();
@@ -521,7 +489,7 @@ mod tests {
 
     #[test]
     fn set_clock_fosc_divset() {
-        let mut di = DummyDI::new();
+        let mut di = TestSpyInterface::new();
         Command::SetClockFoscDivset(0, 0).send(&mut di).unwrap();
         di.check(0xB3, &[0x00]);
         di.clear();
@@ -533,7 +501,7 @@ mod tests {
 
     #[test]
     fn set_display_enhancements() {
-        let mut di = DummyDI::new();
+        let mut di = TestSpyInterface::new();
         Command::SetDisplayEnhancements(false, false)
             .send(&mut di)
             .unwrap();
@@ -552,7 +520,7 @@ mod tests {
 
     #[test]
     fn set_second_precharge_period() {
-        let mut di = DummyDI::new();
+        let mut di = TestSpyInterface::new();
         Command::SetSecondPrechargePeriod(0).send(&mut di).unwrap();
         di.check(0xB6, &[0]);
         di.clear();
@@ -564,7 +532,7 @@ mod tests {
 
     #[test]
     fn set_gray_scale_table() {
-        let mut di = DummyDI::new();
+        let mut di = TestSpyInterface::new();
         Command::SetGrayScaleTable([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14])
             .send(&mut di)
             .unwrap();
@@ -598,7 +566,7 @@ mod tests {
 
     #[test]
     fn set_pre_charge_voltage() {
-        let mut di = DummyDI::new();
+        let mut di = TestSpyInterface::new();
         Command::SetPreChargeVoltage(17).send(&mut di).unwrap();
         di.check(0xBB, &[17]);
         assert_eq!(Command::SetPreChargeVoltage(32).send(&mut di), Err(()));
@@ -606,7 +574,7 @@ mod tests {
 
     #[test]
     fn set_com_deselect_voltage() {
-        let mut di = DummyDI::new();
+        let mut di = TestSpyInterface::new();
         Command::SetComDeselectVoltage(3).send(&mut di).unwrap();
         di.check(0xBE, &[3]);
         assert_eq!(Command::SetComDeselectVoltage(8).send(&mut di), Err(()));
@@ -614,7 +582,7 @@ mod tests {
 
     #[test]
     fn set_master_contrasat() {
-        let mut di = DummyDI::new();
+        let mut di = TestSpyInterface::new();
         Command::SetMasterContrast(3).send(&mut di).unwrap();
         di.check(0xC7, &[3]);
         assert_eq!(Command::SetMasterContrast(16).send(&mut di), Err(()));
@@ -622,7 +590,7 @@ mod tests {
 
     #[test]
     fn set_mux_ratio() {
-        let mut di = DummyDI::new();
+        let mut di = TestSpyInterface::new();
         Command::SetMuxRatio(128).send(&mut di).unwrap();
         di.check(0xCA, &[127]);
         di.clear();
@@ -634,7 +602,7 @@ mod tests {
 
     #[test]
     fn set_command_lock() {
-        let mut di = DummyDI::new();
+        let mut di = TestSpyInterface::new();
         Command::SetCommandLock(true).send(&mut di).unwrap();
         di.check(0xFD, &[0b00010110]);
         di.clear();

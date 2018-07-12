@@ -51,3 +51,42 @@ pub mod spi {
         }
     }
 }
+
+#[cfg(test)]
+pub mod test_spy {
+    //! An interface for use in unit tests to spy on whatever was sent to it.
+
+    use super::DisplayInterface;
+
+    pub struct TestSpyInterface {
+        cmd: Option<u8>,
+        data: Vec<u8>,
+    }
+
+    impl TestSpyInterface {
+        pub fn new() -> Self {
+            TestSpyInterface {
+                cmd: None,
+                data: Vec::new(),
+            }
+        }
+        pub fn check(&self, cmd: u8, data: &[u8]) {
+            assert_eq!(self.cmd, Some(cmd));
+            assert_eq!(self.data, data);
+        }
+        pub fn clear(&mut self) {
+            self.data.clear()
+        }
+    }
+
+    impl DisplayInterface for TestSpyInterface {
+        fn send_command(&mut self, cmd: u8) -> Result<(), ()> {
+            self.cmd = Some(cmd);
+            Ok(())
+        }
+        fn send_data(&mut self, data: &[u8]) -> Result<(), ()> {
+            self.data.extend(data.iter().cloned());
+            Ok(())
+        }
+    }
+}
