@@ -80,8 +80,8 @@ pub enum DisplayMode {
     Inverse,
 }
 
-pub enum Command<'buf> {
-    /// Enable the gray scale gamma table (see SetGrayScaleTable).
+pub enum Command {
+    /// Enable the gray scale gamma table (see `BufCommand::SetGrayScaleTable`).
     EnableGrayScaleTable,
     /// Set the column start and end address range when writing to the display RAM. The column
     /// address pointer is reset to the start column address such that `WriteImageData` will begin
@@ -101,11 +101,6 @@ pub enum Command<'buf> {
         ComScanDirection,
         ComLayout,
     ),
-    /// Write image data into display RAM. The image data will be written to the display RAM in the
-    /// order specified by `SetRemapping` `IncrementAxis` setting. The data, once written, will be
-    /// mapped onto the display pixels in a manner determined by `SetRemapping` `ColumnRemap`,
-    /// `NibbleRemap`, `ComScanDirection`, and `ComLayout` settings.
-    WriteImageData(&'buf [u8]),
     /// Set the display start line. Setting this to e.g. 40 will cause the first row of pixels on
     /// the display to display row 40 or the display RAM, and rows 0-39 of the display RAM will be
     /// wrapped to the bottom, "rolling" the displayed image upwards.  This transformation is
@@ -142,11 +137,6 @@ pub enum Command<'buf> {
     SetDisplayEnhancements(bool, bool),
     /// Set the second pre-charge period. Range 0-15 DCLKs.
     SetSecondPrechargePeriod(u8),
-    /// Set the gray scale gamma table. Each byte 0-14 can range from 0-180 and sets the pixel
-    /// drive pulse width in DCLKs. Bytes 0->14 adjust the gamma setting for grayscale levels
-    /// 1->15; grayscale level 0 cannot be modified. The gamma settings must monotonically
-    /// increase.
-    SetGrayScaleTable([u8; 15]),
     /// Set the gray scale gamma table to the factory default.
     SetDefaultGrayScaleTable,
     /// Set the pre-charge voltage level, from 0.2*Vcc to 0.6*Vcc. Range 0-31.
@@ -168,27 +158,37 @@ pub enum Command<'buf> {
     SetCommandLock(bool),
 }
 
-impl<'buf> Command<'buf> {
+pub enum BufCommand<'buf> {
+    /// Set the gray scale gamma table. Each byte 0-14 can range from 0-180 and sets the pixel
+    /// drive pulse width in DCLKs. Bytes 0->14 adjust the gamma setting for grayscale levels
+    /// 1->15; grayscale level 0 cannot be modified. The gamma settings must monotonically
+    /// increase.
+    SetGrayScaleTable(&'buf [u8]),
+    /// Write image data into display RAM. The image data will be written to the display RAM in the
+    /// order specified by `SetRemapping` `IncrementAxis` setting. The data, once written, will be
+    /// mapped onto the display pixels in a manner determined by `SetRemapping` `ColumnRemap`,
+    /// `NibbleRemap`, `ComScanDirection`, and `ComLayout` settings.
+    WriteImageData(&'buf [u8]),
+}
+
+macro_rules! replace_expr {
+    ($_t:expr, $sub:expr) => {
+        $sub
+    };
+}
+macro_rules! ok_command {
+    ($buf:ident, $cmd:expr, [$($els:expr),*]) => {{
+        const _LEN: usize = 0usize $(+ replace_expr!($els, 1usize))*;
+        $buf[.._LEN].copy_from_slice(&[$($els,)*]);
+        Ok(($cmd, &$buf[.._LEN]))
+    }};
+}
+
+impl Command {
     pub fn send<DI>(self, iface: &mut DI) -> Result<(), ()>
     where
         DI: DisplayInterface,
     {
-        macro_rules! replace_expr {
-            ($_t:expr, $sub:expr) => {
-                $sub
-            };
-        }
-        macro_rules! ok_command {
-                    ($buf:ident, $cmd:expr, [$($els:expr),*]) => {{
-                        const _LEN: usize = 0usize $(+ replace_expr!($els, 1usize))*;
-                        $buf[.._LEN].copy_from_slice(&[$($els,)*]);
-                        Ok(($cmd, &$buf[.._LEN]))
-                    }};
-                    ($buf:ident, $cmd:expr, $src:expr) => {{
-                        $buf[..].copy_from_slice($src);
-                        Ok(($cmd, &$buf[..]))
-                    }};
-                }
         let mut arg_buf = [0u8; 15];
         let (cmd, data) = match self {
             Command::EnableGrayScaleTable => ok_command!(arg_buf, 0x00, []),
@@ -230,7 +230,6 @@ impl<'buf> Command<'buf> {
                 };
                 ok_command!(arg_buf, 0xA0, [ia | cr | nr | csd | interlace, dual_com])
             }
-            Command::WriteImageData(buf) => Ok((0x5C, buf)),
             Command::SetStartLine(line) => match line {
                 0...127 => ok_command!(arg_buf, 0xA1, [line]),
                 _ => Err(()),
@@ -288,21 +287,6 @@ impl<'buf> Command<'buf> {
                 0...15 => ok_command!(arg_buf, 0xB6, [period]),
                 _ => Err(()),
             },
-            Command::SetGrayScaleTable(table) => {
-                // Each element must be greater than the previous one, and all must be
-                // between 0 and 180.
-                let ok = table[1..]
-                    .iter()
-                    .fold((true, 0), |(ok_so_far, prev), cur| {
-                        (ok_so_far && prev < *cur && *cur <= 180, *cur)
-                    })
-                    .0 && table[0] <= table[1];
-                if ok {
-                    ok_command!(arg_buf, 0xB8, &table)
-                } else {
-                    Err(())
-                }
-            }
             Command::SetDefaultGrayScaleTable => ok_command!(arg_buf, 0xB9, []),
             Command::SetPreChargeVoltage(voltage) => match voltage {
                 0...31 => ok_command!(arg_buf, 0xBB, [voltage]),
@@ -328,6 +312,39 @@ impl<'buf> Command<'buf> {
                 };
                 ok_command!(arg_buf, 0xFD, [e])
             }
+        }?;
+        iface.send_command(cmd)?;
+        if data.len() == 0 {
+            Ok(())
+        } else {
+            iface.send_data(data)
+        }
+    }
+}
+
+impl<'a> BufCommand<'a> {
+    pub fn send<DI>(self, iface: &mut DI) -> Result<(), ()>
+    where
+        DI: DisplayInterface,
+    {
+        let (cmd, data) = match self {
+            BufCommand::SetGrayScaleTable(table) => {
+                // Each element must be greater than the previous one, and all must be
+                // between 0 and 180.
+                let ok = table.len() == 15
+                    && table[1..]
+                        .iter()
+                        .fold((true, 0), |(ok_so_far, prev), cur| {
+                            (ok_so_far && prev < *cur && *cur <= 180, *cur)
+                        })
+                        .0 && table[0] <= table[1];
+                if ok {
+                    Ok((0xB8, table))
+                } else {
+                    Err(())
+                }
+            }
+            BufCommand::WriteImageData(buf) => Ok((0x5C, buf)),
         }?;
         iface.send_command(cmd)?;
         if data.len() == 0 {
@@ -402,7 +419,7 @@ mod tests {
     fn write_image_data() {
         let mut di = TestSpyInterface::new();
         let image_buf = (0..24).collect::<Vec<u8>>();
-        Command::WriteImageData(&image_buf[..])
+        BufCommand::WriteImageData(&image_buf[..])
             .send(&mut di)
             .unwrap();
         di.check(0x5C, &(0..24u8).collect::<Vec<_>>()[..]);
@@ -533,12 +550,12 @@ mod tests {
     #[test]
     fn set_gray_scale_table() {
         let mut di = TestSpyInterface::new();
-        Command::SetGrayScaleTable([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14])
+        BufCommand::SetGrayScaleTable(&[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14])
             .send(&mut di)
             .unwrap();
         di.check(0xB8, &[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]);
         di.clear();
-        Command::SetGrayScaleTable([
+        BufCommand::SetGrayScaleTable(&[
             166, 167, 168, 169, 170, 171, 172, 173, 174, 175, 176, 177, 178, 179, 180,
         ]).send(&mut di)
             .unwrap();
@@ -551,14 +568,26 @@ mod tests {
         di.clear();
         // Out of range
         assert_eq!(
-            Command::SetGrayScaleTable([
+            BufCommand::SetGrayScaleTable(&[
                 166, 167, 168, 169, 170, 171, 172, 173, 174, 175, 176, 177, 178, 179, 181,
             ]).send(&mut di),
             Err(())
         );
         // Non-increasing
         assert_eq!(
-            Command::SetGrayScaleTable([0, 1, 2, 2, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14])
+            BufCommand::SetGrayScaleTable(&[0, 1, 2, 2, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14])
+                .send(&mut di),
+            Err(())
+        );
+        // Too many values
+        assert_eq!(
+            BufCommand::SetGrayScaleTable(&[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15])
+                .send(&mut di),
+            Err(())
+        );
+        // Too few values
+        assert_eq!(
+            BufCommand::SetGrayScaleTable(&[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13])
                 .send(&mut di),
             Err(())
         );
