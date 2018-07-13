@@ -1,5 +1,5 @@
 [package]
-name = "ssd1622"
+name = "ssd1322"
 version = "0.1.0"
 authors = ["Kyle Schaffrick <kyle@raidi.us>"]
 
