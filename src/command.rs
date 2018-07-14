@@ -8,6 +8,13 @@
 
 use interface::DisplayInterface;
 
+pub const NUM_PIXEL_COLS: u16 = 480;
+pub const NUM_PIXEL_ROWS: u8 = 128;
+pub const NUM_BUF_COLS: u8 = (NUM_PIXEL_COLS / 4) as u8;
+pub const PIXEL_COL_MAX: u16 = NUM_PIXEL_COLS - 1;
+pub const PIXEL_ROW_MAX: u8 = NUM_PIXEL_ROWS - 1;
+pub const BUF_COL_MAX: u8 = NUM_BUF_COLS - 1;
+
 /// The address increment orientation when writing image data.
 #[derive(Clone, Copy)]
 pub enum IncrementAxis {
@@ -200,11 +207,11 @@ impl Command {
         let (cmd, data) = match self {
             Command::EnableGrayScaleTable => ok_command!(arg_buf, 0x00, []),
             Command::SetColumnAddress(start, end) => match (start, end) {
-                (0...119, 0...119) => ok_command!(arg_buf, 0x15, [start, end]),
+                (0...BUF_COL_MAX, 0...BUF_COL_MAX) => ok_command!(arg_buf, 0x15, [start, end]),
                 _ => Err(()),
             },
             Command::SetRowAddress(start, end) => match (start, end) {
-                (0...127, 0...127) => ok_command!(arg_buf, 0x75, [start, end]),
+                (0...PIXEL_ROW_MAX, 0...PIXEL_ROW_MAX) => ok_command!(arg_buf, 0x75, [start, end]),
                 _ => Err(()),
             },
             Command::SetRemapping(
@@ -238,11 +245,11 @@ impl Command {
                 ok_command!(arg_buf, 0xA0, [ia | cr | nr | csd | interlace, dual_com])
             }
             Command::SetStartLine(line) => match line {
-                0...127 => ok_command!(arg_buf, 0xA1, [line]),
+                0...PIXEL_ROW_MAX => ok_command!(arg_buf, 0xA1, [line]),
                 _ => Err(()),
             },
             Command::SetDisplayOffset(line) => match line {
-                0...127 => ok_command!(arg_buf, 0xA2, [line]),
+                0...PIXEL_ROW_MAX => ok_command!(arg_buf, 0xA2, [line]),
                 _ => Err(()),
             },
             Command::SetDisplayMode(mode) => ok_command!(
@@ -256,7 +263,9 @@ impl Command {
                 []
             ),
             Command::EnablePartialDisplay(start, end) => match (start, end) {
-                (0...127, 0...127) if start <= end => ok_command!(arg_buf, 0xA8, [start, end]),
+                (0...PIXEL_ROW_MAX, 0...PIXEL_ROW_MAX) if start <= end => {
+                    ok_command!(arg_buf, 0xA8, [start, end])
+                }
                 _ => Err(()),
             },
             Command::DisablePartialDisplay => ok_command!(arg_buf, 0xA9, []),
@@ -309,7 +318,7 @@ impl Command {
                 _ => Err(()),
             },
             Command::SetMuxRatio(ratio) => match ratio {
-                16...128 => ok_command!(arg_buf, 0xCA, [ratio - 1]),
+                16...NUM_PIXEL_ROWS => ok_command!(arg_buf, 0xCA, [ratio - 1]),
                 _ => Err(()),
             },
             Command::SetCommandLock(ena) => {

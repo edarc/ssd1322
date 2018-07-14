@@ -128,7 +128,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use super::{PixelCoord as Px, *};
     use interface::test_spy::{Sent, TestSpyInterface};
 
     macro_rules! send {
@@ -142,7 +142,7 @@ mod tests {
     #[test]
     fn init_defaults() {
         let di = TestSpyInterface::new();
-        let mut disp = Display::new(di.split(), PixelCoord(128, 64));
+        let mut disp = Display::new(di.split(), Px(128, 64));
         let cfg = Config::new(ComScanDirection::RowZeroLast, ComLayout::DualProgressive);
         disp.init(cfg).unwrap();
         #[cfg_attr(rustfmt, rustfmt_skip)]
@@ -159,7 +159,7 @@ mod tests {
     #[test]
     fn init_many_options() {
         let di = TestSpyInterface::new();
-        let mut disp = Display::new(di.split(), PixelCoord(256, 128));
+        let mut disp = Display::new(di.split(), Px(256, 128));
         let cfg = Config::new(ComScanDirection::RowZeroLast, ComLayout::DualProgressive)
             .contrast_current(160)
             .phase_lengths(5, 5)
@@ -190,7 +190,7 @@ mod tests {
     #[test]
     fn region_build() {
         let di = TestSpyInterface::new();
-        let mut disp = Display::new(di.split(), PixelCoord(128, 64));
+        let mut disp = Display::new(di.split(), Px(128, 64));
         let cfg = Config::new(ComScanDirection::RowZeroLast, ComLayout::DualProgressive);
         disp.init(cfg).unwrap();
 
@@ -206,7 +206,7 @@ mod tests {
     #[test]
     fn region_draw_packed() {
         let mut di = TestSpyInterface::new();
-        let mut disp = Display::new(di.split(), PixelCoord(128, 64));
+        let mut disp = Display::new(di.split(), Px(128, 64));
         let cfg = Config::new(ComScanDirection::RowZeroLast, ComLayout::DualProgressive);
         disp.init(cfg).unwrap();
         di.clear();
