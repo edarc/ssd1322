@@ -1,4 +1,4 @@
-//! Defines structs for storing register values of commands in the SSD1622 that are associated with
+//! Defines structs for storing register values of commands in the SSD1322 that are associated with
 //! relatively-static configuration.
 
 use command::*;
