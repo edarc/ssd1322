@@ -6,6 +6,10 @@ authors = ["Kyle Schaffrick <kyle@raidi.us>"]
 [dependencies]
 embedded-hal = "0.2"
 
+[dependencies.itertools]
+version = "0.7"
+default-features = false
+
 [features]
 default = ["std"]
 std = []
