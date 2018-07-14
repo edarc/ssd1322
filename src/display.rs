@@ -63,6 +63,11 @@ where
         Command::SetSleepMode(enabled).send(&mut self.iface)
     }
 
+    /// Control the master contrast.
+    pub fn contrast(&mut self, contrast: u8) -> Result<(), ()> {
+        Command::SetMasterContrast(contrast).send(&mut self.iface)
+    }
+
     /// Construct a rectangular region onto which to draw image data. The region rectangle is
     /// specified in buffer coordinates, not pixel coordinates, because pixels can only be
     /// addressed by column (groups of 4), not individually.
