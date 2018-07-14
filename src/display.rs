@@ -104,7 +104,6 @@ where
     rows: u8,
     buf_left: u8,
     buf_cols: u8,
-    pixel_left: u16,
     pixel_cols: u16,
 }
 
@@ -123,7 +122,6 @@ where
             rows: (lower_right.1 - upper_left.1) as u8,
             buf_left: (upper_left.0 / 4) as u8,
             buf_cols: (pixel_cols / 4) as u8,
-            pixel_left: upper_left.0 as u16,
             pixel_cols: pixel_cols as u16,
         }
     }
