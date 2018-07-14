@@ -279,8 +279,9 @@ impl Command {
             ),
             Command::SetPhaseLengths(phase_1, phase_2) => match (phase_1, phase_2) {
                 (5...31, 3...15) => {
-                    let p1 = 0xF0 & ((phase_1 - 1) << 3);
-                    ok_command!(arg_buf, 0xB1, [p1 | phase_2])
+                    let p1 = (phase_1 - 1) >> 1;
+                    let p2 = 0xF0 & (phase_2 << 4);
+                    ok_command!(arg_buf, 0xB1, [p1 | p2])
                 }
                 _ => Err(()),
             },
@@ -511,7 +512,10 @@ mod tests {
     fn set_phase_lengths() {
         let mut di = TestSpyInterface::new();
         Command::SetPhaseLengths(5, 3).send(&mut di).unwrap();
-        di.check(0xB1, &[0x23]);
+        di.check(0xB1, &[0x32]);
+        di.clear();
+        Command::SetPhaseLengths(5, 14).send(&mut di).unwrap();
+        di.check(0xB1, &[0xE2]);
         di.clear();
         Command::SetPhaseLengths(7, 3).send(&mut di).unwrap();
         di.check(0xB1, &[0x33]);

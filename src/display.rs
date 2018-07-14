@@ -41,6 +41,7 @@ where
 
     /// Initialize the display with a config message.
     pub fn init(&mut self, config: Config) -> Result<(), ()> {
+        self.sleep(true)?;
         Command::SetDisplayMode(DisplayMode::BlankDark).send(&mut self.iface)?;
         config.send(&mut self.iface)?;
         self.persistent_config = Some(config.persistent_config);
@@ -53,7 +54,13 @@ where
             ColumnRemap::Forward,
             NibbleRemap::Forward,
         )?;
+        self.sleep(false)?;
         Command::SetDisplayMode(DisplayMode::Normal).send(&mut self.iface)
+    }
+
+    /// Control sleep mode.
+    pub fn sleep(&mut self, enabled: bool) -> Result<(), ()> {
+        Command::SetSleepMode(enabled).send(&mut self.iface)
     }
 
     /// Construct a rectangular region onto which to draw image data. The region rectangle is
@@ -147,11 +154,13 @@ mod tests {
         disp.init(cfg).unwrap();
         #[cfg_attr(rustfmt, rustfmt_skip)]
         di.check_multi(sends!(
+            0xAE, // sleep enable
             0xA4, // display blank
             0xCA, [63], // mux ratio 64 lines
             0xA2, [0], // display offset 0
             0xA1, [0], // start line 0
             0xA0, [0b00010100, 0b00010001], // remapping
+            0xAF, // sleep disable
             0xA6 // display normal
         ));
     }
@@ -162,7 +171,7 @@ mod tests {
         let mut disp = Display::new(di.split(), Px(256, 128));
         let cfg = Config::new(ComScanDirection::RowZeroLast, ComLayout::DualProgressive)
             .contrast_current(160)
-            .phase_lengths(5, 5)
+            .phase_lengths(5, 14)
             .clock_fosc_divset(7, 0)
             .display_enhancements(true, false)
             .second_precharge_period(4)
@@ -171,8 +180,9 @@ mod tests {
         disp.init(cfg).unwrap();
         #[cfg_attr(rustfmt, rustfmt_skip)]
         di.check_multi(sends!(
+            0xAE, // sleep enable
             0xA4, // display blank
-            0xB1, [0x25], // phase lengths
+            0xB1, [0xE2], // phase lengths
             0xC1, [160], // contrast current
             0xB3, [0x70], // clock
             0xB4, [0b10100000, 0b10110101], // display enhancements
@@ -183,6 +193,7 @@ mod tests {
             0xA2, [0], // display offset 0
             0xA1, [0], // start line 0
             0xA0, [0b00010100, 0b00010001], // remapping
+            0xAF, // sleep disable
             0xA6 // display normal
         ));
     }
