@@ -185,16 +185,18 @@ pub enum BufCommand<'buf> {
     WriteImageData(&'buf [u8]),
 }
 
-macro_rules! replace_expr {
-    ($_t:expr, $sub:expr) => {
-        $sub
-    };
-}
 macro_rules! ok_command {
-    ($buf:ident, $cmd:expr, [$($els:expr),*]) => {{
-        const _LEN: usize = 0usize $(+ replace_expr!($els, 1usize))*;
-        $buf[.._LEN].copy_from_slice(&[$($els,)*]);
-        Ok(($cmd, &$buf[.._LEN]))
+    ($buf:ident, $cmd:expr,[]) => {
+        Ok(($cmd, &$buf[..0]))
+    };
+    ($buf:ident, $cmd:expr,[$arg0:expr]) => {{
+        $buf[0] = $arg0;
+        Ok(($cmd, &$buf[..1]))
+    }};
+    ($buf:ident, $cmd:expr,[$arg0:expr, $arg1:expr]) => {{
+        $buf[0] = $arg0;
+        $buf[1] = $arg1;
+        Ok(($cmd, &$buf[..2]))
     }};
 }
 
@@ -203,7 +205,7 @@ impl Command {
     where
         DI: DisplayInterface,
     {
-        let mut arg_buf = [0u8; 15];
+        let mut arg_buf = [0u8; 2];
         let (cmd, data) = match self {
             Command::EnableGrayScaleTable => ok_command!(arg_buf, 0x00, []),
             Command::SetColumnAddress(start, end) => match (start, end) {
