@@ -3,6 +3,7 @@
 use command::{BufCommand, Command};
 use display::PixelCoord;
 use interface;
+use nb;
 
 /// A handle to a rectangular region of a display which can be drawn into.
 pub struct Region<'di, DI>
@@ -48,41 +49,39 @@ where
         Command::SetRowAddress(self.top, self.top + self.rows - 1).send(self.iface)?;
         BufCommand::WriteImageData(&[]).send(self.iface)?;
 
-        // Paint the region using constant memory by allocating a chunk buffer and alternately
-        // filling it from the iterator and writing it to the display.
+        // Paint the region using asynchronous writes so that iter.next() may run concurrently with
+        // the SPI write cycle for a small throughput win.
         let region_total_bytes = self.pixel_cols as usize * self.rows as usize / 2;
         let mut total_written = 0;
-        let mut buf = [0u8; 32];
+        let mut next_byte: u8;
 
         loop {
-            // For each of the buffer slots, fill it with a byte from the iterator, tracking how
-            // many slots are filled and how many bytes have been copied in total for the entire
-            // method call.
-            let mut chunk_len = 0;
-            for slot in buf.iter_mut() {
-                // Break early if we have copied enough bytes to exactly fill the region.
-                if total_written >= region_total_bytes {
-                    break;
-                }
-
-                // Break early if the iterator runs out of bytes.
-                if let Some(pixels) = iter.next() {
-                    chunk_len += 1;
-                    total_written += 1;
-                    *slot = pixels;
-                }
+            // Break early if we have copied enough bytes to exactly fill the region.
+            if total_written >= region_total_bytes {
+                break;
             }
 
-            // Write the 32-byte chunk to the display buffer.
-            // TODO: use non-blocking HAL to let interface write while next buffer fills?
-            self.iface.send_data(&buf[..chunk_len])?;
+            // Break early if the iterator runs out of bytes.
+            match iter.next() {
+                Some(pixels) => {
+                    total_written += 1;
+                    next_byte = pixels;
+                }
+                None => break,
+            }
 
-            // We are done if the inner loop exited early, because that would mean either the
-            // region has been painted in full or the iterator is exhausted.
-            if chunk_len != buf.len() {
-                return Ok(());
+            // Write the byte to the interface FIFO. If the FIFO is full then poll it until the
+            // send succeeds before continuing the outer loop to consume the next byte from the
+            // iterator.
+            loop {
+                match self.iface.send_data_async(next_byte) {
+                    Ok(()) => break,
+                    Err(nb::Error::WouldBlock) => {}
+                    Err(nb::Error::Other(())) => return Err(()),
+                }
             }
         }
+        Ok(())
     }
 }
 
@@ -154,31 +153,6 @@ mod tests {
             0x15, [3, 3],
             0x75, [10, 11],
             0x5C, [0xDE, 0xAD, 0xBE]
-        ));
-        di.clear();
-    }
-
-    #[test]
-    fn draw_packed_multiple_chunks() {
-        let mut di = TestSpyInterface::new();
-        let mut disp = Display::new(di.split(), Px(128, 64), Px(0, 0));
-        let cfg = Config::new(ComScanDirection::RowZeroLast, ComLayout::DualProgressive);
-        disp.init(cfg).unwrap();
-        di.clear();
-        {
-            let mut region = disp.region(Px(0, 10), Px(68, 11)).unwrap();
-            region
-                .draw_packed([0xDE, 0xAD, 0xBE, 0xEF].iter().cycle().cloned())
-                .unwrap();
-        }
-        #[cfg_attr(rustfmt, rustfmt_skip)]
-        di.check_multi(sends!(
-            0x15, [0, 16],
-            0x75, [10, 10],
-            0x5C, [0xDE, 0xAD, 0xBE, 0xEF, 0xDE, 0xAD, 0xBE, 0xEF, 0xDE, 0xAD, 0xBE, 0xEF,
-                   0xDE, 0xAD, 0xBE, 0xEF, 0xDE, 0xAD, 0xBE, 0xEF, 0xDE, 0xAD, 0xBE, 0xEF,
-                   0xDE, 0xAD, 0xBE, 0xEF, 0xDE, 0xAD, 0xBE, 0xEF],
-                  [0xDE, 0xAD]
         ));
         di.clear();
     }

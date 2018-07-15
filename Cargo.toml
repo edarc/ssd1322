@@ -5,6 +5,7 @@ authors = ["Kyle Schaffrick <kyle@raidi.us>"]
 
 [dependencies]
 embedded-hal = "0.2"
+nb = "0.1"
 
 [dependencies.itertools]
 version = "0.7"

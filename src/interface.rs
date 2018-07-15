@@ -1,6 +1,9 @@
+use nb;
+
 pub trait DisplayInterface {
     fn send_command(&mut self, cmd: u8) -> Result<(), ()>;
     fn send_data(&mut self, buf: &[u8]) -> Result<(), ()>;
+    fn send_data_async(&mut self, word: u8) -> nb::Result<(), ()>;
 }
 
 pub mod spi {
@@ -11,6 +14,7 @@ pub mod spi {
     use hal;
 
     use super::DisplayInterface;
+    use nb;
 
     pub struct SpiInterface<SPI, DC> {
         /// The SPI master device connected to the SSD1322.
@@ -22,21 +26,22 @@ pub mod spi {
 
     impl<SPI, DC> SpiInterface<SPI, DC>
     where
-        SPI: hal::blocking::spi::Write<u8>,
+        SPI: hal::spi::FullDuplex<u8> + hal::blocking::spi::Write<u8>,
         DC: hal::digital::OutputPin,
     {
         /// Create a new SPI interface to communicate with the display driver. `spi` is the SPI
         /// master device, and `dc` is the GPIO output pin connected to the D/C pin of the SSD1322.
         pub fn new(spi: SPI, dc: DC) -> Self {
-            Self { spi, dc }
+            Self { spi: spi, dc: dc }
         }
     }
 
     impl<SPI, DC> DisplayInterface for SpiInterface<SPI, DC>
     where
-        SPI: hal::blocking::spi::Write<u8>,
+        SPI: hal::spi::FullDuplex<u8> + hal::blocking::spi::Write<u8>,
         DC: hal::digital::OutputPin,
     {
+        /// Send a command word to the display's command register. Synchronous.
         fn send_command(&mut self, cmd: u8) -> Result<(), ()> {
             self.dc.set_low();
             self.spi.write(&[cmd]).map_err(|_| ())?;
@@ -44,10 +49,26 @@ pub mod spi {
             Ok(())
         }
 
+        /// Send a sequence of data words to the display from a buffer. Synchronous.
         fn send_data(&mut self, buf: &[u8]) -> Result<(), ()> {
             self.dc.set_high();
             self.spi.write(&buf).map_err(|_| ())?;
             Ok(())
+        }
+
+        /// Send a data word to the display asynchronously, using `nb` style non-blocking send. If
+        /// the hardware FIFO is full, returns `WouldBlock` which means the word was not accepted
+        /// and should be retried later.
+        fn send_data_async(&mut self, word: u8) -> nb::Result<(), ()> {
+            self.dc.set_high();
+            match self.spi.send(word) {
+                Ok(()) => {
+                    let _ = self.spi.read();
+                    Ok(())
+                }
+                Err(nb::Error::Other(_)) => Err(nb::Error::Other(())),
+                Err(nb::Error::WouldBlock) => Err(nb::Error::WouldBlock),
+            }
         }
     }
 }
@@ -57,10 +78,11 @@ pub mod test_spy {
     //! An interface for use in unit tests to spy on whatever was sent to it.
 
     use super::DisplayInterface;
+    use nb;
     use std::cell::RefCell;
     use std::rc::Rc;
 
-    #[derive(Debug, PartialEq)]
+    #[derive(Clone, Debug, PartialEq)]
     pub enum Sent {
         Cmd(u8),
         Data(Vec<u8>),
@@ -106,6 +128,21 @@ pub mod test_spy {
         }
         fn send_data(&mut self, data: &[u8]) -> Result<(), ()> {
             self.sent.borrow_mut().push(Sent::Data(data.to_vec()));
+            Ok(())
+        }
+        fn send_data_async(&mut self, word: u8) -> nb::Result<(), ()> {
+            let mut sent = self.sent.borrow_mut();
+            {
+                let last_idx = sent.len() - 1;
+                match &mut sent[last_idx] {
+                    Sent::Cmd(_) => {}
+                    Sent::Data(ref mut d) => {
+                        d.push(word);
+                        return Ok(());
+                    }
+                };
+            }
+            sent.push(Sent::Data(vec![word]));
             Ok(())
         }
     }

@@ -9,6 +9,7 @@ extern crate core;
 extern crate embedded_hal as hal;
 #[macro_use]
 extern crate itertools;
+extern crate nb;
 
 pub mod command;
 pub mod config;
