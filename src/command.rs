@@ -6,14 +6,17 @@
 //! anywhere there is a "column" address, these refer to horizontal groups of 2 bytes driving 4
 //! pixels.
 
+use command::consts::*;
 use interface::DisplayInterface;
 
-pub const NUM_PIXEL_COLS: u16 = 480;
-pub const NUM_PIXEL_ROWS: u8 = 128;
-pub const NUM_BUF_COLS: u8 = (NUM_PIXEL_COLS / 4) as u8;
-pub const PIXEL_COL_MAX: u16 = NUM_PIXEL_COLS - 1;
-pub const PIXEL_ROW_MAX: u8 = NUM_PIXEL_ROWS - 1;
-pub const BUF_COL_MAX: u8 = NUM_BUF_COLS - 1;
+pub mod consts {
+    pub const NUM_PIXEL_COLS: u16 = 480;
+    pub const NUM_PIXEL_ROWS: u8 = 128;
+    pub const NUM_BUF_COLS: u8 = (NUM_PIXEL_COLS / 4) as u8;
+    pub const PIXEL_COL_MAX: u16 = NUM_PIXEL_COLS - 1;
+    pub const PIXEL_ROW_MAX: u8 = NUM_PIXEL_ROWS - 1;
+    pub const BUF_COL_MAX: u8 = NUM_BUF_COLS - 1;
+}
 
 /// The address increment orientation when writing image data.
 #[derive(Clone, Copy)]
