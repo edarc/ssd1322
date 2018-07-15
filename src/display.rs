@@ -72,6 +72,11 @@ where
         Command::SetMasterContrast(contrast).send(&mut self.iface)
     }
 
+    /// Set the vertical pan.
+    pub fn vertical_pan(&mut self, offset: u8) -> Result<(), ()> {
+        Command::SetStartLine(offset).send(&mut self.iface)
+    }
+
     /// Construct a rectangular region onto which to draw image data. The region start and end
     /// horizontal coordinates must be divisible by 4, because pixels can only be addressed by
     /// column (groups of 4), not individually. The region rectangle must also be within the
