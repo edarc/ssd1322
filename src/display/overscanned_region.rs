@@ -1,6 +1,7 @@
 //! Extended region abstraction that allows requesting regions that "overscan" the display, i.e.
 //! portions of the region may lie outside the displayable area. Image data written into
-//! overscanned regions is silently discarded image data written in "overscan" regions.
+//! overscanned regions is silently discarded, to relieve the user from having to consider boundary
+//! conditions in code where the region rectangle is dynamically computed.
 
 use command::consts::*;
 use display::region::Region;
@@ -15,6 +16,9 @@ use interface;
 ///
 /// The functionality is separated into its own kind of region so that the cost of the cropping
 /// logic is not paid when it is known to be unnecessary.
+///
+/// These are intended to be short-lived, and contain a mutable borrow of the display that issued
+/// them so clashing writes are prevented.
 pub struct OverscannedRegion<'di, DI>
 where
     DI: 'di + interface::DisplayInterface,
@@ -42,6 +46,9 @@ impl<'di, DI> OverscannedRegion<'di, DI>
 where
     DI: 'di + interface::DisplayInterface,
 {
+    /// Construct a new region. This is only called by the factory method
+    /// `Display::overscanned_region`, which checks the region coordinates are correctly ordered,
+    /// and pre-compensates the column coordinates for the display column offset.
     pub(super) fn new(
         iface: &'di mut DI,
         upper_left: PixelCoord,
@@ -74,6 +81,10 @@ where
         }
     }
 
+    /// Draw packed-pixel image data into the region, such that each byte is two 4-bit gray scale
+    /// values of horizontally-adjacent pixels. Pixels are drawn left-to-right and top-to-bottom.
+    /// The sequence of pixels is filtered such that only pixels which intersect the displayable
+    /// area are transmitted to the hardware.
     pub fn draw_packed<I>(&mut self, iter: I) -> Result<(), ()>
     where
         I: Iterator<Item = u8>,

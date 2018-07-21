@@ -1,5 +1,5 @@
-//! The display interface, which uses command module at a slightly higher level. It provides a
-//! builder API to configure the display, and methods for writing image data into display regions.
+//! The main API to the display driver. It provides a builder API to configure the display, and
+//! methods for obtaining `Region` instances which can be used to write image data to the display.
 
 // This has to be here in order to be usable by mods declared afterwards.
 #[cfg(test)]
@@ -24,10 +24,12 @@ use display::overscanned_region::OverscannedRegion;
 use display::region::Region;
 use interface;
 
+/// A pixel coordinate pair of `column` and `row`. `column` must be in the range [0,
+/// `consts::PIXEL_COL_MAX`], and `row` must be in the range [0, `consts::PIXEL_ROW_MAX`].
 #[derive(Clone, Copy, Debug)]
 pub struct PixelCoord(pub i16, pub i16);
 
-/// The basic driver for the display.
+/// A driver for an SSD1322 display.
 pub struct Display<DI>
 where
     DI: interface::DisplayInterface,
@@ -42,7 +44,18 @@ impl<DI> Display<DI>
 where
     DI: interface::DisplayInterface,
 {
-    /// Construct a new display driver for a display of a particular size.
+    /// Construct a new display driver for a display with viewable dimensions `display_size`, which
+    /// is connected to the interface `iface`.
+    ///
+    /// Some display modules with resolution lower than the maximum supported by the chip will
+    /// connect column driver or COM lines starting in the middle rather than from 0 for mechanical
+    /// PCB layout reasons.
+    ///
+    /// For such modules, `display_offset` allows automatically removing these offsets when drawing
+    /// image data to the display. It describes the number of pixels of offset the display column
+    /// numbering has relative to the driver and COM line numbering: `display_offset.0` indicates
+    /// the driver line column which corresponds to pixel column 0 of the display, and
+    /// `display_offset.1` indicates which COM line corresponds to pixel row 0 of the display.
     pub fn new(iface: DI, display_size: PixelCoord, display_offset: PixelCoord) -> Self {
         if false
             || display_size.0 > NUM_PIXEL_COLS as i16
@@ -92,15 +105,23 @@ where
     }
 
     /// Set the vertical pan.
+    ///
+    /// This uses the `Command::SetStartLine` feature to shift the display RAM row addresses
+    /// relative to the active set of COM lines, allowing any display-height-sized window of the
+    /// entire 128 rows of display RAM to be made visible.
     pub fn vertical_pan(&mut self, offset: u8) -> Result<(), ()> {
         Command::SetStartLine(offset).send(&mut self.iface)
     }
 
-    /// Construct a rectangular region onto which to draw image data. The region start and end
-    /// horizontal coordinates must be divisible by 4, because pixels can only be addressed by
-    /// column (groups of 4), not individually. The region rectangle must also be within the
-    /// viewable area of the display buffer, where the viewable area includes all 128 rows to
-    /// support vertical panning.
+    /// Construct a rectangular region onto which to draw image data.
+    ///
+    /// The region start and end horizontal coordinates must be divisible by 4, because pixels can
+    /// only be addressed by column address (groups of 4), not individually. The region rectangle
+    /// must also be within the viewable area of the display buffer, where the viewable area
+    /// includes all 128 rows to support vertical panning.
+    ///
+    /// Regions are intended to be short-lived, and mutably borrow the display so clashing writes
+    /// are prevented.
     pub fn region<'di>(
         &'di mut self,
         upper_left: PixelCoord,
@@ -114,7 +135,7 @@ where
         //
         // The chip does not have any such panning support for buffer column addresses outside of
         // the display's viewable area, so even though the chip allows data to be written there, it
-        // is probbly an error because it can never be read back and can never be visible on the
+        // is probably an error because it can never be read back and can never be visible on the
         // display. So, check column values against the display size and do not allow drawing
         // outside them.
         if false
@@ -137,11 +158,17 @@ where
         Ok(Region::new(&mut self.iface, ul, lr))
     }
 
-    /// Construct a rectangular region onto which to draw image data. The region start and end
-    /// horizontal coordinates must be divisible by 4, because pixels can only be addressed by
-    /// column (groups of 4), not individually. The region rectangle *need not* lie within the
-    /// viewable area of the display buffer, as an overscanned region will automatically crop
-    /// non-viewable pixels to alleviate its user from worrying about boundary conditions.
+    /// Construct a rectangular region onto which to draw image data which silently discards
+    /// overscan.
+    ///
+    /// The region start and end horizontal coordinates must be divisible by 4, because pixels can
+    /// only be addressed by column (groups of 4), not individually. An overscanned region
+    /// rectangle *need not* lie within the viewable area of the display buffer, as it will
+    /// automatically crop non-viewable pixels to alleviate its user from worrying about boundary
+    /// conditions.
+    ///
+    /// Regions are intended to be short-lived, and mutably borrow the display so clashing writes
+    /// are prevented.
     pub fn overscanned_region<'di>(
         &'di mut self,
         upper_left: PixelCoord,

@@ -5,7 +5,9 @@ use display::PixelCoord;
 use interface;
 use nb;
 
-/// A handle to a rectangular region of a display which can be drawn into.
+/// A handle to a rectangular region of a display which can be drawn into. These are intended to be
+/// short-lived, and contain a mutable borrow of the display that issued them so clashing writes
+/// are prevented.
 pub struct Region<'di, DI>
 where
     DI: 'di + interface::DisplayInterface,
@@ -23,8 +25,8 @@ where
     DI: 'di + interface::DisplayInterface,
 {
     /// Construct a new region. This is only called by the factory method `Display::region`, which
-    /// checks that the region coordinates are within the viewable area and pre-compensates the
-    /// column coordinates for the display column offset.
+    /// checks that the region coordinates are within the viewable area and correctly ordered, and
+    /// pre-compensates the column coordinates for the display column offset.
     pub(super) fn new(iface: &'di mut DI, upper_left: PixelCoord, lower_right: PixelCoord) -> Self {
         let pixel_cols = lower_right.0 - upper_left.0;
         Self {

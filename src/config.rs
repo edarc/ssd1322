@@ -6,13 +6,15 @@ use interface;
 
 /// The portion of the configuration which will persist inside the `Display` because it shares
 /// registers with functions that can be changed after initialization. This allows the rest of the
-/// `Config` struct to be thrown away to save RAM after Display::init finishes.
+/// `Config` struct to be thrown away to save RAM after `Display::init` finishes.
 pub(crate) struct PersistentConfig {
     com_scan_direction: ComScanDirection,
     com_layout: ComLayout,
 }
 
 impl PersistentConfig {
+    /// Transmit commands to the display at `iface` necessary to put that display into the
+    /// configuration encoded in `self`.
     pub(crate) fn send<DI>(
         &self,
         iface: &mut DI,
@@ -67,6 +69,8 @@ impl Config {
         }
     }
 
+    /// Extend this `Config` to explicitly configure display contrast current. See
+    /// `Command::SetContrastCurrent`.
     pub fn contrast_current(self, current: u8) -> Self {
         Self {
             contrast_current_cmd: Some(Command::SetContrastCurrent(current)),
@@ -74,6 +78,8 @@ impl Config {
         }
     }
 
+    /// Extend this `Config` to explicitly configure OLED drive phase lengths. See
+    /// `Command::SetPhaseLengths`.
     pub fn phase_lengths(self, reset: u8, first_precharge: u8) -> Self {
         Self {
             phase_lengths_cmd: Some(Command::SetPhaseLengths(reset, first_precharge)),
@@ -81,6 +87,8 @@ impl Config {
         }
     }
 
+    /// Extend this `Config` to explicitly configure the display clock frequency and divider. See
+    /// `Command::SetClockFoscDivset`.
     pub fn clock_fosc_divset(self, fosc: u8, divset: u8) -> Self {
         Self {
             clock_fosc_divset_cmd: Some(Command::SetClockFoscDivset(fosc, divset)),
@@ -88,6 +96,8 @@ impl Config {
         }
     }
 
+    /// Extend this `Config` to explicitly configure display enhancement features. See
+    /// `Command::SetDisplayEnhancements`.
     pub fn display_enhancements(self, external_vsl: bool, enhanced_low_gs_quality: bool) -> Self {
         Self {
             display_enhancements_cmd: Some(Command::SetDisplayEnhancements(
@@ -98,6 +108,8 @@ impl Config {
         }
     }
 
+    /// Extend this `Config` to explicitly configure OLED drive second precharge period length. See
+    /// `Command::SetSecondPrechargePeriod`.
     pub fn second_precharge_period(self, period: u8) -> Self {
         Self {
             second_precharge_period_cmd: Some(Command::SetSecondPrechargePeriod(period)),
@@ -105,6 +117,8 @@ impl Config {
         }
     }
 
+    /// Extend this `Config` to explicitly configure OLED drive precharge voltage. See
+    /// `Command::SetPreChargeVoltage`.
     pub fn precharge_voltage(self, voltage: u8) -> Self {
         Self {
             precharge_voltage_cmd: Some(Command::SetPreChargeVoltage(voltage)),
@@ -112,6 +126,8 @@ impl Config {
         }
     }
 
+    /// Extend this `Config` to explicitly configure OLED drive COM deselect voltage. See
+    /// `Command::SetComDeselectVoltage`.
     pub fn com_deselect_voltage(self, voltage: u8) -> Self {
         Self {
             com_deselect_voltage_cmd: Some(Command::SetComDeselectVoltage(voltage)),
@@ -119,7 +135,8 @@ impl Config {
         }
     }
 
-    /// Transmit the configuration to the display chip as commands.
+    /// Transmit commands to the display at `iface` necessary to put that display into the
+    /// configuration encoded in `self`.
     pub(crate) fn send<DI>(&self, iface: &mut DI) -> Result<(), ()>
     where
         DI: interface::DisplayInterface,

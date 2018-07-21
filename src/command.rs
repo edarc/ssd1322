@@ -1,24 +1,38 @@
 //! The command set for the SSD1322.
 //!
-//! Note 1: The display RAM of the SSD1322 is arranged in 128 rows and 120 columns, where each
-//! column is 4 adjacent pixels (segments) in the row for a total max resolution of 128x480. Each
-//! pixel is 4 bits/16 levels of intensity, so each column also refers to two adjacent bytes. Thus,
-//! anywhere there is a "column" address, these refer to horizontal groups of 2 bytes driving 4
-//! pixels.
+//! The display RAM of the SSD1322 is arranged in 128 rows and 120 columns, where each column is 4
+//! adjacent pixels (segments) in the row for a total max resolution of 128x480. Each pixel is 4
+//! bits/16 levels of intensity, so each column also refers to two adjacent bytes. Thus, anywhere
+//! there is a "column" address, these refer to horizontal groups of 2 bytes driving 4 pixels.
 
 use command::consts::*;
 use interface::DisplayInterface;
 
 pub mod consts {
+    //! Constants describing max supported display size and the display RAM layout.
+
+    /// The maximum supported display width in pixels.
     pub const NUM_PIXEL_COLS: u16 = 480;
+
+    /// The maximum supported display height in pixels.
     pub const NUM_PIXEL_ROWS: u8 = 128;
+
+    /// The number of display RAM column addresses.
     pub const NUM_BUF_COLS: u8 = (NUM_PIXEL_COLS / 4) as u8;
+
+    /// The highest valid pixel column index.
     pub const PIXEL_COL_MAX: u16 = NUM_PIXEL_COLS - 1;
+
+    /// The highest valid pixel row index.
     pub const PIXEL_ROW_MAX: u8 = NUM_PIXEL_ROWS - 1;
+
+    /// The highest valid display RAM column address.
     pub const BUF_COL_MAX: u8 = NUM_BUF_COLS - 1;
 }
 
-/// The address increment orientation when writing image data.
+/// The address increment orientation when writing image data. This configures how the SSD1322 will
+/// auto-increment the row and column addresses when image data is written using the
+/// `WriteImageData` command.
 #[derive(Clone, Copy)]
 pub enum IncrementAxis {
     /// The column address will increment as image data is written, writing pairs of bytes
@@ -31,27 +45,32 @@ pub enum IncrementAxis {
     Vertical,
 }
 
-/// Setting of column address remapping.
+/// Setting of column address remapping. This controls the direction of mapping display RAM column
+/// addresses onto groups of pixel column driver lines.
 #[derive(Clone, Copy)]
 pub enum ColumnRemap {
-    /// Column addresses 0->119 map to segments 0,1,2,3->476,477,478,479.
+    /// Column addresses 0->119 map to pixel columns 0,1,2,3->476,477,478,479.
     Forward,
-    /// Column addresses 0->119 map to segments 476,477,478,479->0,1,2,3. Note that the pixels
+    /// Column addresses 0->119 map to pixel columns 476,477,478,479->0,1,2,3. Note that the pixels
     /// within each column number in the same order; `NibbleRemap` controls the order of mapping
     /// pixels to nibbles within each column.
     Reverse,
 }
 
-/// Setting of data nibble remapping.
+/// Setting of data nibble remapping. This controls how the SSD1322 will interpret the nibble-wise
+/// endianness of each 2-byte word, changing the order in which each group of 4 pixels is mapped
+/// onto the 4 nibbles stored at the corresponding display RAM column address.
 #[derive(Clone, Copy)]
 pub enum NibbleRemap {
-    /// 2-byte sequence 0xABCD maps (in L->R order) to pixels 3,2,1,0.
+    /// The 2-byte sequence at each column address 0xABCD maps (in L->R order) to pixels 3,2,1,0.
     Reverse,
-    /// 2-byte sequence 0xABCD maps (in L->R order) to pixels 0,1,2,3.
+    /// The 2-byte sequence at each column address 0xABCD maps (in L->R order) to pixels 0,1,2,3.
     Forward,
 }
 
-/// Setting of the COM line scanning of rows. Changing this setting will flip the image vertically.
+/// Setting of the COM line scanning of rows. This controls the order in which COM lines are
+/// scanned, leaving the order in which display RAM row addresses are scanned unchanged. Toggling
+/// this setting will thus flip the displayed image vertically.
 #[derive(Clone, Copy)]
 pub enum ComScanDirection {
     /// COM lines scan row addresses top to bottom, so that row address 0 is the first row of the
@@ -82,7 +101,8 @@ pub enum ComLayout {
     DualProgressive,
 }
 
-/// Setting of the display mode.
+/// Setting of the display mode. The display mode controls whether the display is blanked, and
+/// whether the pixel intensities are rendered normal or inverted.
 #[derive(Clone, Copy)]
 pub enum DisplayMode {
     /// The display is blanked with all pixels turned OFF (to grayscale level 0).
@@ -96,6 +116,9 @@ pub enum DisplayMode {
     Inverse,
 }
 
+/// Enumerates most of the valid commands that can be sent to the SSD1322 along with their
+/// parameter values. Commands which accept an array of similar "arguments" as a slice are encoded
+/// by `BufCommand` instead to avoid lifetime parameters on this enum.
 #[derive(Clone, Copy)]
 pub enum Command {
     /// Enable the gray scale gamma table (see `BufCommand::SetGrayScaleTable`).
@@ -132,12 +155,14 @@ pub enum Command {
     SetDisplayOffset(u8),
     /// Set the display operating mode. See enum for details.
     SetDisplayMode(DisplayMode),
-    /// Enable partial display mode. This selects a range of rows in the display area which will be
-    /// active, while all others remain inactive. Range is 0-127, where start must be <= end.
+    /// Enable partial display mode. This selects an inclusive range of rows `start` and `end` in
+    /// the display area which will be active, while all others remain inactive. Range is 0-127,
+    /// where `start` must be <= `end`.
     EnablePartialDisplay(u8, u8),
     /// Disable partial display mode.
     DisablePartialDisplay,
-    /// Control sleep mode.
+    /// Control sleep mode. When sleep mode is enabled (`true`), the display multiplexer and driver
+    /// circuits are powered off.
     SetSleepMode(bool),
     /// Set the refresh phase lengths. The first phase (reset) can be set from 5-31 DCLKs, and the
     /// second (first pre-charge) can be set from 3-15 DCLKs. The display module datasheet should
@@ -170,11 +195,14 @@ pub enum Command {
     /// `SetDisplayOffset`, and how the COM lines map to display RAM row addresses is controlled by
     /// `SetStartLine`. Range 16-128.
     SetMuxRatio(u8),
-    /// Set whether the command lock is enabled or disabled. Enabling the command lock blocks all
-    /// commands except `SetCommandLock`.
+    /// Set whether the command lock is enabled or disabled. Enabling the command lock (`true`)
+    /// blocks all commands except `SetCommandLock`.
     SetCommandLock(bool),
 }
 
+/// Enumerates commands that can be sent to the SSD1322 which accept a slice argument buffer. This
+/// is separated from `Command` so that the lifetime parameter of the argument buffer slice does
+/// not pervade code which never invokes these two commands.
 pub enum BufCommand<'buf> {
     /// Set the gray scale gamma table. Each byte 0-14 can range from 0-180 and sets the pixel
     /// drive pulse width in DCLKs. Bytes 0->14 adjust the gamma setting for grayscale levels
@@ -204,6 +232,7 @@ macro_rules! ok_command {
 }
 
 impl Command {
+    /// Transmit the command encoded by `self` to the display on interface `iface`.
     pub fn send<DI>(self, iface: &mut DI) -> Result<(), ()>
     where
         DI: DisplayInterface,
@@ -345,6 +374,7 @@ impl Command {
 }
 
 impl<'a> BufCommand<'a> {
+    /// Transmit the command encoded by `self` to the display on interface `iface`.
     pub fn send<DI>(self, iface: &mut DI) -> Result<(), ()>
     where
         DI: DisplayInterface,

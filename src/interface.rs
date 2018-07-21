@@ -1,5 +1,11 @@
+//! This module provides shims for the `embedded-hal` hardware corresponding to the SSD1322's
+//! supported electrical/bus interfaces. It is a shim between `embedded-hal` implementations and
+//! the display driver's command layer.
+
 use nb;
 
+/// An interface for the SSD1322 implements this trait, which provides the basic operations for
+/// sending pre-encoded commands and data to the chip via the interface.
 pub trait DisplayInterface {
     fn send_command(&mut self, cmd: u8) -> Result<(), ()>;
     fn send_data(&mut self, buf: &[u8]) -> Result<(), ()>;
@@ -8,14 +14,16 @@ pub trait DisplayInterface {
 
 pub mod spi {
     //! The SPI interface supports the "4-wire" interface of the driver, such that each word on the
-    //! SPI bus is 8 bits. The "3-wire" mode replaces the D/C GPIO with a 9th bit on each word,
-    //! which seems really awkward to implement with embedded_hal SPI.
+    //! SPI bus is 8 bits. The "3-wire" mode is not supported, as it replaces the D/C GPIO with a
+    //! 9th bit on each SPI word, and `embedded-hal` SPI traits do not currently support
+    //! non-byte-aligned SPI word lengths.
 
     use hal;
 
     use super::DisplayInterface;
     use nb;
 
+    /// A configured `DisplayInterface` for controlling an SSD1322 via 4-wire SPI.
     pub struct SpiInterface<SPI, DC> {
         /// The SPI master device connected to the SSD1322.
         spi: SPI,
