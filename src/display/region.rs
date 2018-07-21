@@ -85,6 +85,37 @@ where
         }
         Ok(())
     }
+
+    /// Draw unpacked pixel image data into the region, where each byte independently represents a
+    /// single pixel intensity value in the range [0, 15]. Pixels are drawn left-to-right and
+    /// top-to-bottom.
+    pub fn draw<I>(&mut self, iter: I) -> Result<(), ()>
+    where
+        I: Iterator<Item = u8>,
+    {
+        self.draw_packed(Pack8to4(iter))
+    }
+}
+
+/// Pack an iterator of u8 values in the range [0, 15] into an iterator of packed u8 values, such
+/// that every output byte consists of two input values, interpreted as nibbles, packed together.
+/// This is done in big-endian order, which is consistent with an interpretation of the incoming
+/// values as representing pixel intensities in a raster: the first input value is for a pixel to
+/// the left of the second input value in the usual left-to-right, top-to-bottom scan order.
+pub(crate) struct Pack8to4<I>(pub I);
+
+impl<I> Iterator for Pack8to4<I>
+where
+    I: Iterator<Item = u8>,
+{
+    type Item = u8;
+    fn next(&mut self) -> Option<Self::Item> {
+        match (self.0.next(), self.0.next()) {
+            (Some(left_nibble), Some(right_nibble)) => Some(left_nibble << 4 | right_nibble & 0x0F),
+            (Some(odd_nibble), None) => Some(odd_nibble << 4),
+            _ => None,
+        }
+    }
 }
 
 #[cfg(test)]

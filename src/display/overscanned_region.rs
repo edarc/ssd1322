@@ -4,7 +4,7 @@
 //! conditions in code where the region rectangle is dynamically computed.
 
 use command::consts::*;
-use display::region::Region;
+use display::region::{Pack8to4, Region};
 use display::PixelCoord;
 use interface;
 
@@ -107,6 +107,17 @@ where
             .as_mut()
             .unwrap()
             .draw_packed(only_viewable)
+    }
+
+    /// Draw unpacked pixel image data into the region, where each byte independently represents a
+    /// single pixel intensity value in the range [0, 15]. Pixels are drawn left-to-right and
+    /// top-to-bottom. The sequence of pixels is filtered such that only pixels which intersect the
+    /// displayable area are transmitted to the hardware.
+    pub fn draw<I>(&mut self, iter: I) -> Result<(), ()>
+    where
+        I: Iterator<Item = u8>,
+    {
+        self.draw_packed(Pack8to4(iter))
     }
 }
 
