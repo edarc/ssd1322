@@ -15,3 +15,9 @@ pub mod command;
 pub mod config;
 pub mod display;
 pub mod interface;
+
+// Re-exports for primary API.
+pub use command::{consts, ComLayout, ComScanDirection};
+pub use config::Config;
+pub use display::{Display, PixelCoord};
+pub use interface::spi::SpiInterface;
