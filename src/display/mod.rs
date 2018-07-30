@@ -104,6 +104,11 @@ where
         Command::SetMasterContrast(contrast).send(&mut self.iface)
     }
 
+    /// Set the display brightness look-up table.
+    pub fn gray_scale_table(&mut self, table: &[u8]) -> Result<(), ()> {
+        BufCommand::SetGrayScaleTable(table).send(&mut self.iface)
+    }
+
     /// Set the vertical pan.
     ///
     /// This uses the `Command::SetStartLine` feature to shift the display RAM row addresses
