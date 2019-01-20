@@ -62,8 +62,8 @@ where
             || display_size.1 > NUM_PIXEL_ROWS as i16
             || display_offset.0 + display_size.0 > NUM_PIXEL_COLS as i16
             || display_offset.1 + display_size.1 > NUM_PIXEL_ROWS as i16
-            || display_size.0.mod_euc(4) != 0
-            || display_offset.0.mod_euc(4) != 0
+            || display_size.0.rem_euclid(4) != 0
+            || display_offset.0.rem_euclid(4) != 0
         {
             panic!("Display size or column offset not supported by SSD1322.");
         }
@@ -150,8 +150,8 @@ where
             || lower_right.1 > NUM_PIXEL_ROWS as i16
             || upper_left.0 >= lower_right.0
             || upper_left.1 >= lower_right.1
-            || upper_left.0.mod_euc(4) != 0
-            || lower_right.0.mod_euc(4) != 0
+            || upper_left.0.rem_euclid(4) != 0
+            || lower_right.0.rem_euclid(4) != 0
         {
             return Err(());
         }
@@ -182,8 +182,8 @@ where
         if false
             || upper_left.0 >= lower_right.0
             || upper_left.1 >= lower_right.1
-            || upper_left.0.mod_euc(4) != 0
-            || lower_right.0.mod_euc(4) != 0
+            || upper_left.0.rem_euclid(4) != 0
+            || lower_right.0.rem_euclid(4) != 0
         {
             return Err(());
         }
