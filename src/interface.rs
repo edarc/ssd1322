@@ -34,7 +34,7 @@ pub mod spi {
 
     impl<SPI, DC> SpiInterface<SPI, DC>
     where
-        SPI: hal::spi::FullDuplex<u8> + hal::blocking::spi::Write<u8>,
+        SPI: hal::spi::FullDuplex<u8>,
         DC: hal::digital::OutputPin,
     {
         /// Create a new SPI interface to communicate with the display driver. `spi` is the SPI
@@ -46,21 +46,31 @@ pub mod spi {
 
     impl<SPI, DC> DisplayInterface for SpiInterface<SPI, DC>
     where
-        SPI: hal::spi::FullDuplex<u8> + hal::blocking::spi::Write<u8>,
+        SPI: hal::spi::FullDuplex<u8>,
         DC: hal::digital::OutputPin,
     {
         /// Send a command word to the display's command register. Synchronous.
         fn send_command(&mut self, cmd: u8) -> Result<(), ()> {
+            // The SPI device has FIFOs that we must ensure are drained before the bus will
+            // quiesce. This must happen before asserting DC for a command.
+            while let Ok(_) = self.spi.read() {
+                self.dc.set_high();
+            }
             self.dc.set_low();
-            self.spi.write(&[cmd]).map_err(|_| ())?;
+            let bus_op = match block!(self.spi.send(cmd)) {
+                Ok(()) => block!(self.spi.read()).map_err(|_| ()).map(|_| ()),
+                Err(_) => Err(()),
+            };
             self.dc.set_high();
-            Ok(())
+            bus_op
         }
 
         /// Send a sequence of data words to the display from a buffer. Synchronous.
         fn send_data(&mut self, buf: &[u8]) -> Result<(), ()> {
-            self.dc.set_high();
-            self.spi.write(&buf).map_err(|_| ())?;
+            for word in buf {
+                block!(self.spi.send(word.clone())).map_err(|_| ())?;
+                block!(self.spi.read()).map_err(|_| ())?;
+            }
             Ok(())
         }
 
@@ -68,7 +78,6 @@ pub mod spi {
         /// the hardware FIFO is full, returns `WouldBlock` which means the word was not accepted
         /// and should be retried later.
         fn send_data_async(&mut self, word: u8) -> nb::Result<(), ()> {
-            self.dc.set_high();
             match self.spi.send(word) {
                 Ok(()) => {
                     let _ = self.spi.read();
