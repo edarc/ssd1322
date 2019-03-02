@@ -389,7 +389,8 @@ impl<'a> BufCommand<'a> {
                         .fold((true, 0), |(ok_so_far, prev), cur| {
                             (ok_so_far && prev < *cur && *cur <= 180, *cur)
                         })
-                        .0 && table[0] <= table[1];
+                        .0
+                    && table[0] <= table[1];
                 if ok {
                     Ok((0xB8, table))
                 } else {
@@ -440,8 +441,9 @@ mod tests {
             NibbleRemap::Reverse,
             ComScanDirection::RowZeroFirst,
             ComLayout::Progressive,
-        ).send(&mut di)
-            .unwrap();
+        )
+        .send(&mut di)
+        .unwrap();
         di.check(0xA0, &[0x00, 0x01]);
 
         di.clear();
@@ -451,8 +453,9 @@ mod tests {
             NibbleRemap::Forward,
             ComScanDirection::RowZeroLast,
             ComLayout::Interlaced,
-        ).send(&mut di)
-            .unwrap();
+        )
+        .send(&mut di)
+        .unwrap();
         di.check(0xA0, &[0x37, 0x01]);
 
         di.clear();
@@ -462,8 +465,9 @@ mod tests {
             NibbleRemap::Forward,
             ComScanDirection::RowZeroLast,
             ComLayout::DualProgressive,
-        ).send(&mut di)
-            .unwrap();
+        )
+        .send(&mut di)
+        .unwrap();
         di.check(0xA0, &[0x14, 0x11]);
     }
 
@@ -616,8 +620,9 @@ mod tests {
         di.clear();
         BufCommand::SetGrayScaleTable(&[
             166, 167, 168, 169, 170, 171, 172, 173, 174, 175, 176, 177, 178, 179, 180,
-        ]).send(&mut di)
-            .unwrap();
+        ])
+        .send(&mut di)
+        .unwrap();
         di.check(
             0xB8,
             &[
@@ -629,7 +634,8 @@ mod tests {
         assert_eq!(
             BufCommand::SetGrayScaleTable(&[
                 166, 167, 168, 169, 170, 171, 172, 173, 174, 175, 176, 177, 178, 179, 181,
-            ]).send(&mut di),
+            ])
+            .send(&mut di),
             Err(())
         );
         // Non-increasing

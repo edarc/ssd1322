@@ -31,7 +31,8 @@ impl PersistentConfig {
             nibble_remap,
             self.com_scan_direction,
             self.com_layout,
-        ).send(iface)
+        )
+        .send(iface)
     }
 }
 
@@ -142,7 +143,8 @@ impl Config {
         DI: interface::DisplayInterface,
     {
         self.phase_lengths_cmd.map_or(Ok(()), |c| c.send(iface))?;
-        self.contrast_current_cmd.map_or(Ok(()), |c| c.send(iface))?;
+        self.contrast_current_cmd
+            .map_or(Ok(()), |c| c.send(iface))?;
         self.clock_fosc_divset_cmd
             .map_or(Ok(()), |c| c.send(iface))?;
         self.display_enhancements_cmd
