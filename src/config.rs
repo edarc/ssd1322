@@ -1,8 +1,8 @@
 //! Defines structs for storing register values of commands in the SSD1322 that are associated with
 //! relatively-static configuration.
 
-use command::*;
-use interface;
+use crate::command::*;
+use crate::interface;
 
 /// The portion of the configuration which will persist inside the `Display` because it shares
 /// registers with functions that can be changed after initialization. This allows the rest of the

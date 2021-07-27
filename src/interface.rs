@@ -18,7 +18,7 @@ pub mod spi {
     //! 9th bit on each SPI word, and `embedded-hal` SPI traits do not currently support
     //! non-byte-aligned SPI word lengths.
 
-    use hal;
+    use embedded_hal as hal;
 
     use super::DisplayInterface;
     use nb;

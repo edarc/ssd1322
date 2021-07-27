@@ -1,8 +1,9 @@
 [package]
 name = "ssd1322"
 description = "SPI driver for the SSD1322 OLED display controller"
-version = "0.2.2"
+version = "0.3.0"
 authors = ["Kyle Schaffrick <kyle@raidi.us>"]
+edition = "2018"
 keywords = ["no-std", "ssd1322", "oled", "embedded", "embedded-hal-driver"]
 repository = "https://github.com/edarc/ssd1322"
 readme = "README.md"

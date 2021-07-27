@@ -17,12 +17,12 @@ pub mod testing {
 pub mod overscanned_region;
 pub mod region;
 
-use command::consts::*;
-use command::*;
-use config::{Config, PersistentConfig};
-use display::overscanned_region::OverscannedRegion;
-use display::region::Region;
-use interface;
+use crate::command::consts::*;
+use crate::command::*;
+use crate::config::{Config, PersistentConfig};
+use crate::display::overscanned_region::OverscannedRegion;
+use crate::display::region::Region;
+use crate::interface;
 
 /// A pixel coordinate pair of `column` and `row`. `column` must be in the range [0,
 /// `consts::PIXEL_COL_MAX`], and `row` must be in the range [0, `consts::PIXEL_ROW_MAX`].

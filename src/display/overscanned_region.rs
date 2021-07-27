@@ -3,10 +3,12 @@
 //! overscanned regions is silently discarded, to relieve the user from having to consider boundary
 //! conditions in code where the region rectangle is dynamically computed.
 
-use command::consts::*;
-use display::region::{Pack8to4, Region};
-use display::PixelCoord;
-use interface;
+use itertools::iproduct;
+
+use crate::command::consts::*;
+use crate::display::region::{Pack8to4, Region};
+use crate::display::PixelCoord;
+use crate::interface;
 
 /// A handle to a rectangular region which can be drawn into, but which is permitted to have
 /// portions that lie outside the viewable area of the display. Pixels that fall outside the
@@ -123,10 +125,10 @@ where
 
 #[cfg(test)]
 mod tests {
-    use command::{ComLayout, ComScanDirection};
-    use config::Config;
-    use display::{Display, PixelCoord as Px};
-    use interface::test_spy::{Sent, TestSpyInterface};
+    use crate::command::{ComLayout, ComScanDirection};
+    use crate::config::Config;
+    use crate::display::{Display, PixelCoord as Px};
+    use crate::interface::test_spy::{Sent, TestSpyInterface};
 
     #[test]
     fn draw_packed_interior() {

@@ -1,9 +1,10 @@
 //! Region abstraction for drawing into rectangular regions of the display.
 
-use command::{BufCommand, Command};
-use display::PixelCoord;
-use interface;
 use nb;
+
+use crate::command::{BufCommand, Command};
+use crate::display::PixelCoord;
+use crate::interface;
 
 /// A handle to a rectangular region of a display which can be drawn into. These are intended to be
 /// short-lived, and contain a mutable borrow of the display that issued them so clashing writes
@@ -120,10 +121,10 @@ where
 
 #[cfg(test)]
 mod tests {
-    use command::{ComLayout, ComScanDirection};
-    use config::Config;
-    use display::{Display, PixelCoord as Px};
-    use interface::test_spy::{Sent, TestSpyInterface};
+    use crate::command::{ComLayout, ComScanDirection};
+    use crate::config::Config;
+    use crate::display::{Display, PixelCoord as Px};
+    use crate::interface::test_spy::{Sent, TestSpyInterface};
 
     #[test]
     fn draw_packed() {

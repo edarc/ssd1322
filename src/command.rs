@@ -5,8 +5,8 @@
 //! bits/16 levels of intensity, so each column also refers to two adjacent bytes. Thus, anywhere
 //! there is a "column" address, these refer to horizontal groups of 2 bytes driving 4 pixels.
 
-use command::consts::*;
-use interface::DisplayInterface;
+use crate::command::consts::*;
+use crate::interface::DisplayInterface;
 
 pub mod consts {
     //! Constants describing max supported display size and the display RAM layout.
@@ -241,11 +241,11 @@ impl Command {
         let (cmd, data) = match self {
             Command::EnableGrayScaleTable => ok_command!(arg_buf, 0x00, []),
             Command::SetColumnAddress(start, end) => match (start, end) {
-                (0...BUF_COL_MAX, 0...BUF_COL_MAX) => ok_command!(arg_buf, 0x15, [start, end]),
+                (0..=BUF_COL_MAX, 0..=BUF_COL_MAX) => ok_command!(arg_buf, 0x15, [start, end]),
                 _ => Err(()),
             },
             Command::SetRowAddress(start, end) => match (start, end) {
-                (0...PIXEL_ROW_MAX, 0...PIXEL_ROW_MAX) => ok_command!(arg_buf, 0x75, [start, end]),
+                (0..=PIXEL_ROW_MAX, 0..=PIXEL_ROW_MAX) => ok_command!(arg_buf, 0x75, [start, end]),
                 _ => Err(()),
             },
             Command::SetRemapping(
@@ -279,11 +279,11 @@ impl Command {
                 ok_command!(arg_buf, 0xA0, [ia | cr | nr | csd | interlace, dual_com])
             }
             Command::SetStartLine(line) => match line {
-                0...PIXEL_ROW_MAX => ok_command!(arg_buf, 0xA1, [line]),
+                0..=PIXEL_ROW_MAX => ok_command!(arg_buf, 0xA1, [line]),
                 _ => Err(()),
             },
             Command::SetDisplayOffset(line) => match line {
-                0...PIXEL_ROW_MAX => ok_command!(arg_buf, 0xA2, [line]),
+                0..=PIXEL_ROW_MAX => ok_command!(arg_buf, 0xA2, [line]),
                 _ => Err(()),
             },
             Command::SetDisplayMode(mode) => ok_command!(
@@ -297,7 +297,7 @@ impl Command {
                 []
             ),
             Command::EnablePartialDisplay(start, end) => match (start, end) {
-                (0...PIXEL_ROW_MAX, 0...PIXEL_ROW_MAX) if start <= end => {
+                (0..=PIXEL_ROW_MAX, 0..=PIXEL_ROW_MAX) if start <= end => {
                     ok_command!(arg_buf, 0xA8, [start, end])
                 }
                 _ => Err(()),
@@ -312,7 +312,7 @@ impl Command {
                 []
             ),
             Command::SetPhaseLengths(phase_1, phase_2) => match (phase_1, phase_2) {
-                (5...31, 3...15) => {
+                (5..=31, 3..=15) => {
                     let p1 = (phase_1 - 1) >> 1;
                     let p2 = 0xF0 & (phase_2 << 4);
                     ok_command!(arg_buf, 0xB1, [p1 | p2])
@@ -320,7 +320,7 @@ impl Command {
                 _ => Err(()),
             },
             Command::SetClockFoscDivset(fosc, divset) => match (fosc, divset) {
-                (0...15, 0...10) => ok_command!(arg_buf, 0xB3, [fosc << 4 | divset]),
+                (0..=15, 0..=10) => ok_command!(arg_buf, 0xB3, [fosc << 4 | divset]),
                 _ => Err(()),
             },
             Command::SetDisplayEnhancements(ena_external_vsl, ena_enahnced_low_gs_quality) => {
@@ -335,25 +335,25 @@ impl Command {
                 ok_command!(arg_buf, 0xB4, [vsl, gs])
             }
             Command::SetSecondPrechargePeriod(period) => match period {
-                0...15 => ok_command!(arg_buf, 0xB6, [period]),
+                0..=15 => ok_command!(arg_buf, 0xB6, [period]),
                 _ => Err(()),
             },
             Command::SetDefaultGrayScaleTable => ok_command!(arg_buf, 0xB9, []),
             Command::SetPreChargeVoltage(voltage) => match voltage {
-                0...31 => ok_command!(arg_buf, 0xBB, [voltage]),
+                0..=31 => ok_command!(arg_buf, 0xBB, [voltage]),
                 _ => Err(()),
             },
             Command::SetComDeselectVoltage(voltage) => match voltage {
-                0...7 => ok_command!(arg_buf, 0xBE, [voltage]),
+                0..=7 => ok_command!(arg_buf, 0xBE, [voltage]),
                 _ => Err(()),
             },
             Command::SetContrastCurrent(current) => ok_command!(arg_buf, 0xC1, [current]),
             Command::SetMasterContrast(contrast) => match contrast {
-                0...15 => ok_command!(arg_buf, 0xC7, [contrast]),
+                0..=15 => ok_command!(arg_buf, 0xC7, [contrast]),
                 _ => Err(()),
             },
             Command::SetMuxRatio(ratio) => match ratio {
-                16...NUM_PIXEL_ROWS => ok_command!(arg_buf, 0xCA, [ratio - 1]),
+                16..=NUM_PIXEL_ROWS => ok_command!(arg_buf, 0xCA, [ratio - 1]),
                 _ => Err(()),
             },
             Command::SetCommandLock(ena) => {
@@ -411,7 +411,7 @@ impl<'a> BufCommand<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use interface::test_spy::TestSpyInterface;
+    use crate::interface::test_spy::TestSpyInterface;
     use std::vec::Vec;
 
     #[test]
