@@ -87,7 +87,7 @@ where
     /// values of horizontally-adjacent pixels. Pixels are drawn left-to-right and top-to-bottom.
     /// The sequence of pixels is filtered such that only pixels which intersect the displayable
     /// area are transmitted to the hardware.
-    pub fn draw_packed<I>(&mut self, iter: I) -> Result<(), ()>
+    pub fn draw_packed<I>(&mut self, iter: I) -> Result<(), DI::Error>
     where
         I: Iterator<Item = u8>,
     {
@@ -115,7 +115,7 @@ where
     /// single pixel intensity value in the range [0, 15]. Pixels are drawn left-to-right and
     /// top-to-bottom. The sequence of pixels is filtered such that only pixels which intersect the
     /// displayable area are transmitted to the hardware.
-    pub fn draw<I>(&mut self, iter: I) -> Result<(), ()>
+    pub fn draw<I>(&mut self, iter: I) -> Result<(), DI::Error>
     where
         I: Iterator<Item = u8>,
     {

@@ -21,7 +21,7 @@ impl PersistentConfig {
         increment_axis: IncrementAxis,
         column_remap: ColumnRemap,
         nibble_remap: NibbleRemap,
-    ) -> Result<(), ()>
+    ) -> Result<(), CommandError<DI::Error>>
     where
         DI: interface::DisplayInterface,
     {
@@ -138,7 +138,7 @@ impl Config {
 
     /// Transmit commands to the display at `iface` necessary to put that display into the
     /// configuration encoded in `self`.
-    pub(crate) fn send<DI>(&self, iface: &mut DI) -> Result<(), ()>
+    pub(crate) fn send<DI>(&self, iface: &mut DI) -> Result<(), CommandError<DI::Error>>
     where
         DI: interface::DisplayInterface,
     {
@@ -154,6 +154,7 @@ impl Config {
         self.precharge_voltage_cmd
             .map_or(Ok(()), |c| c.send(iface))?;
         self.com_deselect_voltage_cmd
-            .map_or(Ok(()), |c| c.send(iface))
+            .map_or(Ok(()), |c| c.send(iface))?;
+        Ok(())
     }
 }

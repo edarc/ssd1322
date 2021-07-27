@@ -76,7 +76,7 @@ where
     }
 
     /// Initialize the display with a config message.
-    pub fn init(&mut self, config: Config) -> Result<(), ()> {
+    pub fn init(&mut self, config: Config) -> Result<(), CommandError<DI::Error>> {
         self.sleep(true)?;
         Command::SetDisplayMode(DisplayMode::BlankDark).send(&mut self.iface)?;
         config.send(&mut self.iface)?;
@@ -95,17 +95,17 @@ where
     }
 
     /// Control sleep mode.
-    pub fn sleep(&mut self, enabled: bool) -> Result<(), ()> {
+    pub fn sleep(&mut self, enabled: bool) -> Result<(), CommandError<DI::Error>> {
         Command::SetSleepMode(enabled).send(&mut self.iface)
     }
 
     /// Control the master contrast.
-    pub fn contrast(&mut self, contrast: u8) -> Result<(), ()> {
+    pub fn contrast(&mut self, contrast: u8) -> Result<(), CommandError<DI::Error>> {
         Command::SetMasterContrast(contrast).send(&mut self.iface)
     }
 
     /// Set the display brightness look-up table.
-    pub fn gray_scale_table(&mut self, table: &[u8]) -> Result<(), ()> {
+    pub fn gray_scale_table(&mut self, table: &[u8]) -> Result<(), CommandError<DI::Error>> {
         BufCommand::SetGrayScaleTable(table).send(&mut self.iface)
     }
 
@@ -114,7 +114,7 @@ where
     /// This uses the `Command::SetStartLine` feature to shift the display RAM row addresses
     /// relative to the active set of COM lines, allowing any display-height-sized window of the
     /// entire 128 rows of display RAM to be made visible.
-    pub fn vertical_pan(&mut self, offset: u8) -> Result<(), ()> {
+    pub fn vertical_pan(&mut self, offset: u8) -> Result<(), CommandError<DI::Error>> {
         Command::SetStartLine(offset).send(&mut self.iface)
     }
 
@@ -131,7 +131,7 @@ where
         &'di mut self,
         upper_left: PixelCoord,
         lower_right: PixelCoord,
-    ) -> Result<Region<'di, DI>, ()> {
+    ) -> Result<Region<'di, DI>, CommandError<DI::Error>> {
         // The row fields are bounds-checked against the chip's maximum supported row rather than
         // the display size, because the display supports vertical scrolling by adding an offset to
         // the memory address that corresponds to row 0 (`SetStartLine` command). This feature
@@ -153,7 +153,7 @@ where
             || upper_left.0.rem_euclid(4) != 0
             || lower_right.0.rem_euclid(4) != 0
         {
-            return Err(());
+            return Err(CommandError::OutOfRange);
         }
 
         // The column offset only is added to the pixel coordinates of the region. The row offset
@@ -178,14 +178,14 @@ where
         &'di mut self,
         upper_left: PixelCoord,
         lower_right: PixelCoord,
-    ) -> Result<OverscannedRegion<'di, DI>, ()> {
+    ) -> Result<OverscannedRegion<'di, DI>, CommandError<DI::Error>> {
         if false
             || upper_left.0 >= lower_right.0
             || upper_left.1 >= lower_right.1
             || upper_left.0.rem_euclid(4) != 0
             || lower_right.0.rem_euclid(4) != 0
         {
-            return Err(());
+            return Err(CommandError::OutOfRange);
         }
 
         Ok(OverscannedRegion::new(

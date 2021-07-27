@@ -7,9 +7,11 @@ use nb;
 /// An interface for the SSD1322 implements this trait, which provides the basic operations for
 /// sending pre-encoded commands and data to the chip via the interface.
 pub trait DisplayInterface {
-    fn send_command(&mut self, cmd: u8) -> Result<(), ()>;
-    fn send_data(&mut self, buf: &[u8]) -> Result<(), ()>;
-    fn send_data_async(&mut self, word: u8) -> nb::Result<(), ()>;
+    type Error;
+
+    fn send_command(&mut self, cmd: u8) -> Result<(), Self::Error>;
+    fn send_data(&mut self, buf: &[u8]) -> Result<(), Self::Error>;
+    fn send_data_async(&mut self, word: u8) -> nb::Result<(), Self::Error>;
 }
 
 pub mod spi {
@@ -23,6 +25,23 @@ pub mod spi {
     use super::DisplayInterface;
     use nb;
 
+    /// The union of all errors that may occur on the SPI interface. This consists of variants for
+    /// the error types of the D/C GPIO and the SPI bus.
+    #[derive(Debug)]
+    pub enum SpiInterfaceError<DCE, SPIE> {
+        DCError(DCE),
+        SPIError(SPIE),
+    }
+
+    impl<DCE, SPIE> SpiInterfaceError<DCE, SPIE> {
+        fn from_dc(e: DCE) -> Self {
+            Self::DCError(e)
+        }
+        fn from_spi(e: SPIE) -> Self {
+            Self::SPIError(e)
+        }
+    }
+
     /// A configured `DisplayInterface` for controlling an SSD1322 via 4-wire SPI.
     pub struct SpiInterface<SPI, DC> {
         /// The SPI master device connected to the SSD1322.
@@ -35,7 +54,7 @@ pub mod spi {
     impl<SPI, DC> SpiInterface<SPI, DC>
     where
         SPI: hal::spi::FullDuplex<u8>,
-        DC: hal::digital::OutputPin,
+        DC: hal::digital::v2::OutputPin,
     {
         /// Create a new SPI interface to communicate with the display driver. `spi` is the SPI
         /// master device, and `dc` is the GPIO output pin connected to the D/C pin of the SSD1322.
@@ -47,29 +66,34 @@ pub mod spi {
     impl<SPI, DC> DisplayInterface for SpiInterface<SPI, DC>
     where
         SPI: hal::spi::FullDuplex<u8>,
-        DC: hal::digital::OutputPin,
+        DC: hal::digital::v2::OutputPin,
     {
+        type Error = SpiInterfaceError<
+            <DC as hal::digital::v2::OutputPin>::Error,
+            <SPI as hal::spi::FullDuplex<u8>>::Error,
+        >;
+
         /// Send a command word to the display's command register. Synchronous.
-        fn send_command(&mut self, cmd: u8) -> Result<(), ()> {
+        fn send_command(&mut self, cmd: u8) -> Result<(), Self::Error> {
             // The SPI device has FIFOs that we must ensure are drained before the bus will
             // quiesce. This must happen before asserting DC for a command.
             while let Ok(_) = self.spi.read() {
-                self.dc.set_high();
+                self.dc.set_high().map_err(Self::Error::from_dc)?;
             }
-            self.dc.set_low();
-            let bus_op = match block!(self.spi.send(cmd)) {
-                Ok(()) => block!(self.spi.read()).map_err(|_| ()).map(|_| ()),
-                Err(_) => Err(()),
-            };
-            self.dc.set_high();
+            self.dc.set_low().map_err(Self::Error::from_dc)?;
+            let bus_op = nb::block!(self.spi.send(cmd))
+                .and_then(|_| nb::block!(self.spi.read()))
+                .map_err(Self::Error::from_spi)
+                .map(core::mem::drop);
+            self.dc.set_high().map_err(Self::Error::from_dc)?;
             bus_op
         }
 
         /// Send a sequence of data words to the display from a buffer. Synchronous.
-        fn send_data(&mut self, buf: &[u8]) -> Result<(), ()> {
+        fn send_data(&mut self, buf: &[u8]) -> Result<(), Self::Error> {
             for word in buf {
-                block!(self.spi.send(word.clone())).map_err(|_| ())?;
-                block!(self.spi.read()).map_err(|_| ())?;
+                nb::block!(self.spi.send(word.clone())).map_err(Self::Error::from_spi)?;
+                nb::block!(self.spi.read()).map_err(Self::Error::from_spi)?;
             }
             Ok(())
         }
@@ -77,13 +101,13 @@ pub mod spi {
         /// Send a data word to the display asynchronously, using `nb` style non-blocking send. If
         /// the hardware FIFO is full, returns `WouldBlock` which means the word was not accepted
         /// and should be retried later.
-        fn send_data_async(&mut self, word: u8) -> nb::Result<(), ()> {
+        fn send_data_async(&mut self, word: u8) -> nb::Result<(), Self::Error> {
             match self.spi.send(word) {
                 Ok(()) => {
                     let _ = self.spi.read();
                     Ok(())
                 }
-                Err(nb::Error::Other(_)) => Err(nb::Error::Other(())),
+                Err(nb::Error::Other(e)) => Err(nb::Error::Other(Self::Error::from_spi(e))),
                 Err(nb::Error::WouldBlock) => Err(nb::Error::WouldBlock),
             }
         }
@@ -139,15 +163,17 @@ pub mod test_spy {
     }
 
     impl DisplayInterface for TestSpyInterface {
-        fn send_command(&mut self, cmd: u8) -> Result<(), ()> {
+        type Error = core::convert::Infallible;
+
+        fn send_command(&mut self, cmd: u8) -> Result<(), Self::Error> {
             self.sent.borrow_mut().push(Sent::Cmd(cmd));
             Ok(())
         }
-        fn send_data(&mut self, data: &[u8]) -> Result<(), ()> {
+        fn send_data(&mut self, data: &[u8]) -> Result<(), Self::Error> {
             self.sent.borrow_mut().push(Sent::Data(data.to_vec()));
             Ok(())
         }
-        fn send_data_async(&mut self, word: u8) -> nb::Result<(), ()> {
+        fn send_data_async(&mut self, word: u8) -> nb::Result<(), Self::Error> {
             let mut sent = self.sent.borrow_mut();
             {
                 let last_idx = sent.len() - 1;

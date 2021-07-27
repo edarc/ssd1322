@@ -216,6 +216,32 @@ pub enum BufCommand<'buf> {
     WriteImageData(&'buf [u8]),
 }
 
+/// Errors that can occur in commands.
+#[derive(Debug, PartialEq)]
+pub enum CommandError<IE> {
+    /// The underlying `DisplayInterface` gave an error while trying to issue the command to the
+    /// hardware.
+    InterfaceError(IE),
+    /// An argument to the command was outside of the valid range.
+    OutOfRange,
+    /// The gray scale table provided was not the correct length.
+    BadTableLength,
+}
+
+impl<IE > CommandError<IE> {
+    /// Unwrap a `CommandError` that is assumed to be of the `InterfaceError` variant, or panic if
+    /// it is any other variant. This is particularly used inside the region abstractions where we
+    /// assume that non-interface-related errors are prevented by the correctness checks performed
+    /// by that abstraction (or else constitute a bug in that abstraction), and we only wish to
+    /// have the user deal with interface problems.
+    pub(crate) fn unwrap_interface(self) -> IE {
+        match self {
+            CommandError::InterfaceError(ie) => ie,
+            _ => panic!("Unexpected non-interface error"),
+        }
+    }
+}
+
 macro_rules! ok_command {
     ($buf:ident, $cmd:expr,[]) => {
         Ok(($cmd, &$buf[..0]))
@@ -233,7 +259,7 @@ macro_rules! ok_command {
 
 impl Command {
     /// Transmit the command encoded by `self` to the display on interface `iface`.
-    pub fn send<DI>(self, iface: &mut DI) -> Result<(), ()>
+    pub fn send<DI>(self, iface: &mut DI) -> Result<(), CommandError<DI::Error>>
     where
         DI: DisplayInterface,
     {
@@ -242,11 +268,11 @@ impl Command {
             Command::EnableGrayScaleTable => ok_command!(arg_buf, 0x00, []),
             Command::SetColumnAddress(start, end) => match (start, end) {
                 (0..=BUF_COL_MAX, 0..=BUF_COL_MAX) => ok_command!(arg_buf, 0x15, [start, end]),
-                _ => Err(()),
+                _ => Err(CommandError::OutOfRange),
             },
             Command::SetRowAddress(start, end) => match (start, end) {
                 (0..=PIXEL_ROW_MAX, 0..=PIXEL_ROW_MAX) => ok_command!(arg_buf, 0x75, [start, end]),
-                _ => Err(()),
+                _ => Err(CommandError::OutOfRange),
             },
             Command::SetRemapping(
                 increment_axis,
@@ -280,11 +306,11 @@ impl Command {
             }
             Command::SetStartLine(line) => match line {
                 0..=PIXEL_ROW_MAX => ok_command!(arg_buf, 0xA1, [line]),
-                _ => Err(()),
+                _ => Err(CommandError::OutOfRange),
             },
             Command::SetDisplayOffset(line) => match line {
                 0..=PIXEL_ROW_MAX => ok_command!(arg_buf, 0xA2, [line]),
-                _ => Err(()),
+                _ => Err(CommandError::OutOfRange),
             },
             Command::SetDisplayMode(mode) => ok_command!(
                 arg_buf,
@@ -300,7 +326,7 @@ impl Command {
                 (0..=PIXEL_ROW_MAX, 0..=PIXEL_ROW_MAX) if start <= end => {
                     ok_command!(arg_buf, 0xA8, [start, end])
                 }
-                _ => Err(()),
+                _ => Err(CommandError::OutOfRange),
             },
             Command::DisablePartialDisplay => ok_command!(arg_buf, 0xA9, []),
             Command::SetSleepMode(ena) => ok_command!(
@@ -317,11 +343,11 @@ impl Command {
                     let p2 = 0xF0 & (phase_2 << 4);
                     ok_command!(arg_buf, 0xB1, [p1 | p2])
                 }
-                _ => Err(()),
+                _ => Err(CommandError::OutOfRange),
             },
             Command::SetClockFoscDivset(fosc, divset) => match (fosc, divset) {
                 (0..=15, 0..=10) => ok_command!(arg_buf, 0xB3, [fosc << 4 | divset]),
-                _ => Err(()),
+                _ => Err(CommandError::OutOfRange),
             },
             Command::SetDisplayEnhancements(ena_external_vsl, ena_enahnced_low_gs_quality) => {
                 let vsl = match ena_external_vsl {
@@ -336,25 +362,25 @@ impl Command {
             }
             Command::SetSecondPrechargePeriod(period) => match period {
                 0..=15 => ok_command!(arg_buf, 0xB6, [period]),
-                _ => Err(()),
+                _ => Err(CommandError::OutOfRange),
             },
             Command::SetDefaultGrayScaleTable => ok_command!(arg_buf, 0xB9, []),
             Command::SetPreChargeVoltage(voltage) => match voltage {
                 0..=31 => ok_command!(arg_buf, 0xBB, [voltage]),
-                _ => Err(()),
+                _ => Err(CommandError::OutOfRange),
             },
             Command::SetComDeselectVoltage(voltage) => match voltage {
                 0..=7 => ok_command!(arg_buf, 0xBE, [voltage]),
-                _ => Err(()),
+                _ => Err(CommandError::OutOfRange),
             },
             Command::SetContrastCurrent(current) => ok_command!(arg_buf, 0xC1, [current]),
             Command::SetMasterContrast(contrast) => match contrast {
                 0..=15 => ok_command!(arg_buf, 0xC7, [contrast]),
-                _ => Err(()),
+                _ => Err(CommandError::OutOfRange),
             },
             Command::SetMuxRatio(ratio) => match ratio {
                 16..=NUM_PIXEL_ROWS => ok_command!(arg_buf, 0xCA, [ratio - 1]),
-                _ => Err(()),
+                _ => Err(CommandError::OutOfRange),
             },
             Command::SetCommandLock(ena) => {
                 let e = match ena {
@@ -364,18 +390,22 @@ impl Command {
                 ok_command!(arg_buf, 0xFD, [e])
             }
         }?;
-        iface.send_command(cmd)?;
+        iface
+            .send_command(cmd)
+            .map_err(|e| CommandError::InterfaceError(e))?;
         if data.len() == 0 {
             Ok(())
         } else {
-            iface.send_data(data)
+            iface
+                .send_data(data)
+                .map_err(|e| CommandError::InterfaceError(e))
         }
     }
 }
 
 impl<'a> BufCommand<'a> {
     /// Transmit the command encoded by `self` to the display on interface `iface`.
-    pub fn send<DI>(self, iface: &mut DI) -> Result<(), ()>
+    pub fn send<DI>(self, iface: &mut DI) -> Result<(), CommandError<DI::Error>>
     where
         DI: DisplayInterface,
     {
@@ -383,27 +413,33 @@ impl<'a> BufCommand<'a> {
             BufCommand::SetGrayScaleTable(table) => {
                 // Each element must be greater than the previous one, and all must be
                 // between 0 and 180.
-                let ok = table.len() == 15
-                    && table[1..]
-                        .iter()
-                        .fold((true, 0), |(ok_so_far, prev), cur| {
-                            (ok_so_far && prev < *cur && *cur <= 180, *cur)
-                        })
-                        .0
+                if table.len() != 15 {
+                    return Err(CommandError::BadTableLength);
+                }
+                let in_range_and_monotonic = table[1..]
+                    .iter()
+                    .fold((true, 0), |(ok_so_far, prev), cur| {
+                        (ok_so_far && prev < *cur && *cur <= 180, *cur)
+                    })
+                    .0
                     && table[0] <= table[1];
-                if ok {
+                if in_range_and_monotonic {
                     Ok((0xB8, table))
                 } else {
-                    Err(())
+                    Err(CommandError::OutOfRange)
                 }
             }
             BufCommand::WriteImageData(buf) => Ok((0x5C, buf)),
         }?;
-        iface.send_command(cmd)?;
+        iface
+            .send_command(cmd)
+            .map_err(|e| CommandError::InterfaceError(e))?;
         if data.len() == 0 {
             Ok(())
         } else {
-            iface.send_data(data)
+            iface
+                .send_data(data)
+                .map_err(|e| CommandError::InterfaceError(e))
         }
     }
 }
@@ -419,8 +455,14 @@ mod tests {
         let mut di = TestSpyInterface::new();
         Command::SetColumnAddress(23, 42).send(&mut di).unwrap();
         di.check(0x15, &[23, 42]);
-        assert_eq!(Command::SetColumnAddress(120, 42).send(&mut di), Err(()));
-        assert_eq!(Command::SetColumnAddress(23, 255).send(&mut di), Err(()));
+        assert_eq!(
+            Command::SetColumnAddress(120, 42).send(&mut di),
+            Err(CommandError::OutOfRange)
+        );
+        assert_eq!(
+            Command::SetColumnAddress(23, 255).send(&mut di),
+            Err(CommandError::OutOfRange)
+        );
     }
 
     #[test]
@@ -428,8 +470,14 @@ mod tests {
         let mut di = TestSpyInterface::new();
         Command::SetRowAddress(23, 42).send(&mut di).unwrap();
         di.check(0x75, &[23, 42]);
-        assert_eq!(Command::SetRowAddress(128, 42).send(&mut di), Err(()));
-        assert_eq!(Command::SetRowAddress(23, 255).send(&mut di), Err(()));
+        assert_eq!(
+            Command::SetRowAddress(128, 42).send(&mut di),
+            Err(CommandError::OutOfRange)
+        );
+        assert_eq!(
+            Command::SetRowAddress(23, 255).send(&mut di),
+            Err(CommandError::OutOfRange)
+        );
     }
 
     #[test]
@@ -486,7 +534,10 @@ mod tests {
         let mut di = TestSpyInterface::new();
         Command::SetStartLine(23).send(&mut di).unwrap();
         di.check(0xA1, &[23]);
-        assert_eq!(Command::SetStartLine(128).send(&mut di), Err(()));
+        assert_eq!(
+            Command::SetStartLine(128).send(&mut di),
+            Err(CommandError::OutOfRange)
+        );
     }
 
     #[test]
@@ -494,7 +545,10 @@ mod tests {
         let mut di = TestSpyInterface::new();
         Command::SetDisplayOffset(23).send(&mut di).unwrap();
         di.check(0xA2, &[23]);
-        assert_eq!(Command::SetDisplayOffset(128).send(&mut di), Err(()));
+        assert_eq!(
+            Command::SetDisplayOffset(128).send(&mut di),
+            Err(CommandError::OutOfRange)
+        );
     }
 
     #[test]
@@ -528,13 +582,16 @@ mod tests {
         di.check(0xA8, &[23, 42]);
         assert_eq!(
             Command::EnablePartialDisplay(23, 128).send(&mut di),
-            Err(())
+            Err(CommandError::OutOfRange)
         );
         assert_eq!(
             Command::EnablePartialDisplay(128, 129).send(&mut di),
-            Err(())
+            Err(CommandError::OutOfRange)
         );
-        assert_eq!(Command::EnablePartialDisplay(42, 23).send(&mut di), Err(()));
+        assert_eq!(
+            Command::EnablePartialDisplay(42, 23).send(&mut di),
+            Err(CommandError::OutOfRange)
+        );
     }
 
     #[test]
@@ -561,10 +618,22 @@ mod tests {
         di.clear();
         Command::SetPhaseLengths(31, 15).send(&mut di).unwrap();
         di.check(0xB1, &[0xFF]);
-        assert_eq!(Command::SetPhaseLengths(4, 3).send(&mut di), Err(()));
-        assert_eq!(Command::SetPhaseLengths(32, 3).send(&mut di), Err(()));
-        assert_eq!(Command::SetPhaseLengths(5, 2).send(&mut di), Err(()));
-        assert_eq!(Command::SetPhaseLengths(5, 16).send(&mut di), Err(()));
+        assert_eq!(
+            Command::SetPhaseLengths(4, 3).send(&mut di),
+            Err(CommandError::OutOfRange)
+        );
+        assert_eq!(
+            Command::SetPhaseLengths(32, 3).send(&mut di),
+            Err(CommandError::OutOfRange)
+        );
+        assert_eq!(
+            Command::SetPhaseLengths(5, 2).send(&mut di),
+            Err(CommandError::OutOfRange)
+        );
+        assert_eq!(
+            Command::SetPhaseLengths(5, 16).send(&mut di),
+            Err(CommandError::OutOfRange)
+        );
     }
 
     #[test]
@@ -575,8 +644,14 @@ mod tests {
         di.clear();
         Command::SetClockFoscDivset(15, 10).send(&mut di).unwrap();
         di.check(0xB3, &[0xFA]);
-        assert_eq!(Command::SetClockFoscDivset(0, 11).send(&mut di), Err(()));
-        assert_eq!(Command::SetClockFoscDivset(16, 0).send(&mut di), Err(()));
+        assert_eq!(
+            Command::SetClockFoscDivset(0, 11).send(&mut di),
+            Err(CommandError::OutOfRange)
+        );
+        assert_eq!(
+            Command::SetClockFoscDivset(16, 0).send(&mut di),
+            Err(CommandError::OutOfRange)
+        );
     }
 
     #[test]
@@ -607,7 +682,10 @@ mod tests {
         Command::SetSecondPrechargePeriod(15).send(&mut di).unwrap();
         di.check(0xB6, &[15]);
         di.clear();
-        assert_eq!(Command::SetSecondPrechargePeriod(16).send(&mut di), Err(()));
+        assert_eq!(
+            Command::SetSecondPrechargePeriod(16).send(&mut di),
+            Err(CommandError::OutOfRange)
+        );
     }
 
     #[test]
@@ -636,25 +714,25 @@ mod tests {
                 166, 167, 168, 169, 170, 171, 172, 173, 174, 175, 176, 177, 178, 179, 181,
             ])
             .send(&mut di),
-            Err(())
+            Err(CommandError::OutOfRange)
         );
         // Non-increasing
         assert_eq!(
             BufCommand::SetGrayScaleTable(&[0, 1, 2, 2, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14])
                 .send(&mut di),
-            Err(())
+            Err(CommandError::OutOfRange)
         );
         // Too many values
         assert_eq!(
             BufCommand::SetGrayScaleTable(&[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15])
                 .send(&mut di),
-            Err(())
+            Err(CommandError::BadTableLength)
         );
         // Too few values
         assert_eq!(
             BufCommand::SetGrayScaleTable(&[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13])
                 .send(&mut di),
-            Err(())
+            Err(CommandError::BadTableLength)
         );
     }
 
@@ -663,7 +741,10 @@ mod tests {
         let mut di = TestSpyInterface::new();
         Command::SetPreChargeVoltage(17).send(&mut di).unwrap();
         di.check(0xBB, &[17]);
-        assert_eq!(Command::SetPreChargeVoltage(32).send(&mut di), Err(()));
+        assert_eq!(
+            Command::SetPreChargeVoltage(32).send(&mut di),
+            Err(CommandError::OutOfRange)
+        );
     }
 
     #[test]
@@ -671,7 +752,10 @@ mod tests {
         let mut di = TestSpyInterface::new();
         Command::SetComDeselectVoltage(3).send(&mut di).unwrap();
         di.check(0xBE, &[3]);
-        assert_eq!(Command::SetComDeselectVoltage(8).send(&mut di), Err(()));
+        assert_eq!(
+            Command::SetComDeselectVoltage(8).send(&mut di),
+            Err(CommandError::OutOfRange)
+        );
     }
 
     #[test]
@@ -679,7 +763,10 @@ mod tests {
         let mut di = TestSpyInterface::new();
         Command::SetMasterContrast(3).send(&mut di).unwrap();
         di.check(0xC7, &[3]);
-        assert_eq!(Command::SetMasterContrast(16).send(&mut di), Err(()));
+        assert_eq!(
+            Command::SetMasterContrast(16).send(&mut di),
+            Err(CommandError::OutOfRange)
+        );
     }
 
     #[test]
@@ -690,8 +777,14 @@ mod tests {
         di.clear();
         Command::SetMuxRatio(16).send(&mut di).unwrap();
         di.check(0xCA, &[15]);
-        assert_eq!(Command::SetMuxRatio(15).send(&mut di), Err(()));
-        assert_eq!(Command::SetMuxRatio(129).send(&mut di), Err(()));
+        assert_eq!(
+            Command::SetMuxRatio(15).send(&mut di),
+            Err(CommandError::OutOfRange)
+        );
+        assert_eq!(
+            Command::SetMuxRatio(129).send(&mut di),
+            Err(CommandError::OutOfRange)
+        );
     }
 
     #[test]

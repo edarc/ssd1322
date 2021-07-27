@@ -2,7 +2,7 @@
 
 use nb;
 
-use crate::command::{BufCommand, Command};
+use crate::command::{BufCommand, Command, CommandError};
 use crate::display::PixelCoord;
 use crate::interface;
 
@@ -42,15 +42,21 @@ where
 
     /// Draw packed-pixel image data into the region, such that each byte is two 4-bit gray scale
     /// values of horizontally-adjacent pixels. Pixels are drawn left-to-right and top-to-bottom.
-    pub fn draw_packed<I>(&mut self, mut iter: I) -> Result<(), ()>
+    pub fn draw_packed<I>(&mut self, mut iter: I) -> Result<(), DI::Error>
     where
         I: Iterator<Item = u8>,
     {
-        // Set the row and column address registers and put the display in write mode.
-        Command::SetColumnAddress(self.buf_left, self.buf_left + self.buf_cols - 1)
-            .send(self.iface)?;
-        Command::SetRowAddress(self.top, self.top + self.rows - 1).send(self.iface)?;
-        BufCommand::WriteImageData(&[]).send(self.iface)?;
+        // Set the row and column address registers and put the display in write mode. Unwrap all
+        // of the CommandErrors in this scope as interface errors, as all bounds checking should be
+        // done by the time we are here.
+        (|| {
+            Command::SetColumnAddress(self.buf_left, self.buf_left + self.buf_cols - 1)
+                .send(self.iface)?;
+            Command::SetRowAddress(self.top, self.top + self.rows - 1).send(self.iface)?;
+            BufCommand::WriteImageData(&[]).send(self.iface)?;
+            Ok(())
+        })()
+        .map_err(CommandError::unwrap_interface)?;
 
         // Paint the region using asynchronous writes so that iter.next() may run concurrently with
         // the SPI write cycle for a small throughput win.
@@ -80,7 +86,7 @@ where
                 match self.iface.send_data_async(next_byte) {
                     Ok(()) => break,
                     Err(nb::Error::WouldBlock) => {}
-                    Err(nb::Error::Other(())) => return Err(()),
+                    Err(nb::Error::Other(e)) => return Err(e),
                 }
             }
         }
@@ -90,7 +96,7 @@ where
     /// Draw unpacked pixel image data into the region, where each byte independently represents a
     /// single pixel intensity value in the range [0, 15]. Pixels are drawn left-to-right and
     /// top-to-bottom.
-    pub fn draw<I>(&mut self, iter: I) -> Result<(), ()>
+    pub fn draw<I>(&mut self, iter: I) -> Result<(), DI::Error>
     where
         I: Iterator<Item = u8>,
     {
